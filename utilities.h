@@ -43,6 +43,7 @@
 #include <vtkm/io/VTKDataSetWriter.h>
 #include <vtkm/exec/ParametricCoordinates.h>
 #include <vtkm/exec/CellInterpolate.h>
+#include <vtkm/filter/particleadvection/BoundsMap.h>
 
 //--statistics
 #include <vtkh/StatisticsDB.hpp>
@@ -126,8 +127,7 @@ void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
     }
 }
 
-void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds,
-                vtkm::Particle startPoint, vtkm::Particle endPoint, int rank, int step)
+void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds,int rank, int step)
 {
     if(rank == 0)
     {

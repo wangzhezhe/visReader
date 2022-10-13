@@ -289,7 +289,8 @@ void createLineOfSeeds(std::vector<vtkm::Particle> &seeds, vtkm::Particle startP
         printLineOhSeeds(seeds, startPoint, endPoint, rank);
 }
 
-void createBoxOfSeeds(std::vector<vtkm::Particle> &seeds,
+void createBoxOfSeeds(vtkh::DataSet *data,
+                      std::vector<vtkm::Particle> &seeds,
                       vtkm::FloatDefault xMin,
                       vtkm::FloatDefault xMax,
                       vtkm::FloatDefault yMin,
@@ -298,6 +299,48 @@ void createBoxOfSeeds(std::vector<vtkm::Particle> &seeds,
                       vtkm::FloatDefault zMax,
                       int numSeeds, int rank, int numRanks, int step)
 {
+
+
+    //Dave begin changes
+    //Set seeds for BBox
+    std::vector<vtkm::Vec3f> allSeeds;
+    for (int i = 0; i < numSeeds; i++)
+    {
+      float x = xMin + (xMax-xMin) * random01();
+      float y = yMin + (yMax-yMin) * random01();
+      float z = zMin + (zMax-zMin) * random01();
+      allSeeds.push_back({x, y, z});
+    }
+
+    // auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
+    vtkm::Id numDomains = data->GetNumberOfDomains();
+    std::vector<vtkm::cont::DataSet> dataSetVec;
+    for (vtkm::Id i = 0; i < numDomains; i++)
+      dataSetVec.push_back(data->GetDomain(i));
+
+    vtkm::filter::particleadvection::BoundsMap boundsMap(dataSetVec);
+
+    // select seeds that belongs to current domain that the rank owns
+    for (int i = 0; i < numSeeds; i++)
+    {
+      auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
+      if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank)
+        seeds.push_back({allSeeds[i], i});
+    }
+
+    std::vector<int> seedCounts(numRanks, 0);
+    seedCounts[rank] = seeds.size();
+    MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT,
+                  MPI_SUM, MPI_COMM_WORLD);
+    int totNum =  0;
+    for (int i = 0; i < numRanks; i++){
+        totNum += seedCounts[i];
+    }
+    if(totNum!=numSeeds){
+      throw std::runtime_error("totNum is supposed to equal numSeeds");
+    }
+
+    /*original way to create seeds
     vtkm::Particle diff, startPoint, endPoint;
 
     startPoint.Pos = {xMin, yMin, zMin};
@@ -328,9 +371,11 @@ void createBoxOfSeeds(std::vector<vtkm::Particle> &seeds,
       for (auto& p : seeds)
         p.ID += offset;
     }
+    */
+
 
     if(verbose)
-        printBoxOhSeeds(seeds, startPoint, endPoint, rank, step);
+        printBoxOhSeeds(seeds, rank, step);
 }
 
 void createSeedInEveryCellCloverleaf(std::vector<vtkm::Particle> &seeds,
@@ -578,7 +623,7 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step) {
   //createLineOfSeeds(seeds, startPoint, endPoint, GLOBAL_ADVECT_NUM_SEEDS, rank);
   if(seedMethod == "box")
   {
-      createBoxOfSeeds(seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax, GLOBAL_ADVECT_NUM_SEEDS, rank, numRanks, step);
+      createBoxOfSeeds(data_set, seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax, GLOBAL_ADVECT_NUM_SEEDS, rank, numRanks, step);
   }
   else if(seedMethod == "cell")
   {
