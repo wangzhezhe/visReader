@@ -53,17 +53,6 @@ include_directories(${ADIOS2_INCLUDE_DIRS})
 link_directories(${ADIOS2_DIR}/lib)
 ###########################
 
-
-add_executable(reader reader.cpp)
-target_link_libraries(reader ${ADIOS2_LIBRARIES})
-target_link_libraries(reader ${MPI_LIBRARIES})
-target_link_libraries(reader ${VTKm_LIBRARIES})
-target_link_libraries(reader ${VTKH_LIBRARIES})
-target_link_libraries(reader ${Fides_LIBRARIES})
-#target_link_libraries(reader dmalloc)
-target_compile_options(reader PRIVATE "-DVTKH_ENABLE_STATISTICS")
-target_compile_options(reader PRIVATE "-DVTKH_PARALLEL")
-
 OPTION (USE_GPU OFF)
 message ("USE_GPU is setting as: " ${USE_GPU})
 if(USE_GPU)
