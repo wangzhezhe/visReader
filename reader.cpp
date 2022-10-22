@@ -868,6 +868,7 @@ void runCoordinator(vtkh::DataSet *data_set, int rank, int numRanks, int step) {
     {
         vtkh::DataSet *ghosts = runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
         runAdvection(ghosts, rank, numRanks, step);
+        //runAdvection(data_set, rank, numRanks, step);
     } else {
     
         //rename ghost cells because VTKm currently intrinsically only looks for one specific name
