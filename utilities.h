@@ -52,9 +52,9 @@
 using namespace std;
 
 //debug value
-bool verbose = true;
-bool debugVTK = true;
-bool writeStreamlines = true;
+bool verbose = false;
+bool debugVTK = false;
+bool writeStreamlines = false;
 
 
 namespace vtkm
