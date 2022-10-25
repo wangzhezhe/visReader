@@ -647,6 +647,8 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step) {
   streamline.SetField(fieldToOperateOn);
   streamline.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
   streamline.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
+  streamline.SetIterationStep(step);
+
   vtkh::EVENT_END("streamline_setup");
 
 
@@ -983,6 +985,9 @@ void runTest(int rank, int numRanks) {
     if (status == fides::StepStatus::NotReady) {
       continue;
     } else if (status == fides::StepStatus::EndOfStream) {
+      //TODO, how we process this for the last step?
+      //currently, the write is closed before the reader for the 
+      //last step, how to writer wait the reader read, then close?
       break;
     }
 
