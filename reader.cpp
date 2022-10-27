@@ -120,7 +120,11 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
     }
     else if (optionName == "--seed-method=")
     {
-      if (optionValue == "box")
+      if (optionValue == "point")
+      {
+        strcat(repeatargs, "\t\t--seed-method=point\n");
+        seedMethod = "point";
+      }else if (optionValue == "box")
       {
         strcat(repeatargs, "\t\t--seed-method=box\n");
         seedMethod = "box";
@@ -334,6 +338,12 @@ vtkm::rendering::Camera createCamera(vtkm::Bounds bounds, float zoom)
 static vtkm::FloatDefault random01()
 {
   return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
+}
+
+//fixed seeds position for debug
+void createPointsOfSeeds(std::vector<vtkm::Particle> &seeds){
+  vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(1,1,6), 1);
+  seeds.push_back(p);
 }
 
 void createLineOfSeeds(std::vector<vtkm::Particle> &seeds, vtkm::Particle startPoint,
@@ -697,7 +707,10 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
   vtkh::EVENT_BEGIN("streamline_generate_seeds");
   std::vector<vtkm::Particle> seeds;
   // createLineOfSeeds(seeds, startPoint, endPoint, GLOBAL_ADVECT_NUM_SEEDS, rank);
-  if (seedMethod == "box")
+  if (seedMethod == "point")
+  {
+    createPointsOfSeeds(seeds);
+  }else if (seedMethod == "box")
   {
     createBoxOfSeeds(data_set, seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax, GLOBAL_ADVECT_NUM_SEEDS, rank, numRanks, step);
   }
@@ -774,6 +787,14 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
     vtkh::EVENT_BEGIN("particle_advection_get_output");
     particleAdvectOutput = pa.GetOutput();
     vtkh::EVENT_END("particle_advection_get_output");
+
+    if (writeStreamlines)
+    {
+      vtkh::EVENT_BEGIN("particle_advection_save_advection_files");
+      writeDataSet(particleAdvectOutput, "advection_streamlinesOutput", rank, step);
+      vtkh::EVENT_END("particle_advection_save_advection_files");
+    }
+
     delete particleAdvectOutput;
   }
 
@@ -1319,6 +1340,8 @@ int main(int argc, char **argv)
   vtkh::ADD_EVENT("particle_advection_setup");
   vtkh::ADD_EVENT("particle_advection_update");
   vtkh::ADD_EVENT("particle_advection_get_output");
+  vtkh::ADD_EVENT("particle_advection_save_advection_files");
+  
   vtkh::SET_EVENT_T0();
   //--
 
