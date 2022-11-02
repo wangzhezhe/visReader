@@ -732,8 +732,8 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
 
   if (rank == 0)
   {
-    std::cerr << "\nstep size " << GLOBAL_ADVECT_STEP_SIZE << std::endl;
-    std::cerr << "maxSteps " << GLOBAL_ADVECT_NUM_STEPS << std::endl;
+    std::cerr << "\n advect step size " << GLOBAL_ADVECT_STEP_SIZE << std::endl;
+    std::cerr << "advect maxSteps " << GLOBAL_ADVECT_NUM_STEPS << std::endl;
   }
 
   if (recordTrajectories)
@@ -1114,7 +1114,9 @@ void runTest(int rank, int numRanks)
   fides::metadata::Size nBlocks = 0;
   fides::metadata::Size nSteps = 0;
   bool metadataRead = false;
+  // for cloverleaf, the start one is step 10
   long unsigned int currentStep = 0;
+  int visitFrequency=1;
 
   // Loop until we are out of steps to read or reach a predefined maximum
   while (true)
@@ -1153,6 +1155,7 @@ void runTest(int rank, int numRanks)
 
       nBlocks =
           metaData.Get<fides::metadata::Size>(fides::keys::NUMBER_OF_BLOCKS());
+
       if (rank == 0)
         std::cout << "num blocks " << nBlocks.NumberOfItems << std::endl;
 
@@ -1161,6 +1164,8 @@ void runTest(int rank, int numRanks)
       {
         nSteps =
             metaData.Get<fides::metadata::Size>(fides::keys::NUMBER_OF_STEPS());
+
+
         if (rank == 0)
           std::cout << "num steps " << nSteps.NumberOfItems << std::endl;
 
@@ -1288,7 +1293,7 @@ void runTest(int rank, int numRanks)
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    currentStep++;
+    currentStep=currentStep+visitFrequency;
 
     // Check if we are done based on how many steps the user asked for
     if (currentStep >= totalSteps)
