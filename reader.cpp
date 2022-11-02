@@ -27,6 +27,7 @@ vtkm::FloatDefault GLOBAL_ADVECT_STEP_SIZE = 0.1;
 vtkm::FloatDefault G_xMin = 0, G_xMax = 0, G_yMin = 0, G_yMax = 0, G_zMin = 0, G_zMax = 0;
 bool cloverleaf = true;
 bool recordTrajectories = true;
+bool outputResults = false;
 // print program usage message to user
 void printUsage(int argc, char **argv, int rank, int numTasks)
 {
@@ -124,7 +125,8 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         strcat(repeatargs, "\t\t--seed-method=point\n");
         seedMethod = "point";
-      }else if (optionValue == "box")
+      }
+      else if (optionValue == "box")
       {
         strcat(repeatargs, "\t\t--seed-method=box\n");
         seedMethod = "box";
@@ -217,6 +219,19 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         strcat(repeatargs, "\t\t--record-trajectories=false\n");
         recordTrajectories = false;
+      }
+    }
+    else if (optionName == "--output-results=")
+    {
+      if (optionValue == "true")
+      {
+        strcat(repeatargs, "\t\t--output-results=true\n");
+        outputResults = true;
+      }
+      else if (optionValue == "false")
+      {
+        strcat(repeatargs, "\t\t--output-results=false\n");
+        outputResults = false;
       }
     }
     else if (optionName == "--iso-levels=")
@@ -340,9 +355,10 @@ static vtkm::FloatDefault random01()
   return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
 }
 
-//fixed seeds position for debug
-void createPointsOfSeeds(std::vector<vtkm::Particle> &seeds){
-  vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(1,1,6), 1);
+// fixed seeds position for debug
+void createPointsOfSeeds(std::vector<vtkm::Particle> &seeds)
+{
+  vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(1, 1, 6), 1);
   seeds.push_back(p);
 }
 
@@ -700,17 +716,15 @@ void createSeedInEveryDomain(std::vector<vtkm::Particle> &seeds,
 
 void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
 {
-  //---- Time the render
-  std::chrono::steady_clock::time_point start = startTimer();
   vtkh::EVENT_BEGIN("streamline/particleadv_total");
-
   vtkh::EVENT_BEGIN("streamline_generate_seeds");
   std::vector<vtkm::Particle> seeds;
   // createLineOfSeeds(seeds, startPoint, endPoint, GLOBAL_ADVECT_NUM_SEEDS, rank);
   if (seedMethod == "point")
   {
     createPointsOfSeeds(seeds);
-  }else if (seedMethod == "box")
+  }
+  else if (seedMethod == "box")
   {
     createBoxOfSeeds(data_set, seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax, GLOBAL_ADVECT_NUM_SEEDS, rank, numRanks, step);
   }
@@ -736,6 +750,8 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
     std::cerr << "advect maxSteps " << GLOBAL_ADVECT_NUM_STEPS << std::endl;
   }
 
+  std::chrono::steady_clock::time_point filterStart = startTimer();
+
   if (recordTrajectories)
   {
     vtkh::Streamline streamline;
@@ -757,7 +773,7 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
     streamline_output = streamline.GetOutput();
     vtkh::EVENT_END("streamline_get_output");
 
-    if (writeStreamlines)
+    if (outputResults)
     {
       vtkh::EVENT_BEGIN("streamline_save_advection_files");
       writeDataSet(streamline_output, "advection_streamlinesOutput", rank, step);
@@ -777,7 +793,6 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
     pa.SetInput(data_set);
     pa.SetIterationStep(step);
     vtkh::EVENT_END("particle_advection_setup");
-
     vtkh::EVENT_BEGIN("particle_advection_update");
     pa.Update();
     vtkh::EVENT_END("particle_advection_update");
@@ -788,31 +803,31 @@ void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step)
     particleAdvectOutput = pa.GetOutput();
     vtkh::EVENT_END("particle_advection_get_output");
 
-    if (writeStreamlines)
-    {
-      vtkh::EVENT_BEGIN("particle_advection_save_advection_files");
-      writeDataSet(particleAdvectOutput, "advection_streamlinesOutput", rank, step);
-      vtkh::EVENT_END("particle_advection_save_advection_files");
-    }
-
+    // there is no streamline for the particle advection filter
     delete particleAdvectOutput;
   }
 
   vtkh::EVENT_END("streamline/particleadv_total");
-  float totalTime = endTimer(start);
+  float filterTime = endTimer(filterStart);
   if (recordTrajectories)
   {
-    fprintf(stderr, "\n%i, VISapp_%i_%i, advect(streamline), %f", step, rank, numRanks,
-            totalTime);
-    (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
-                  << ", advect, " << totalTime << endl;
+    if (rank == 0)
+    {
+      fprintf(stderr, "\n%i, VISapp_%i_%i, advect(streamline), %f", step, rank, numRanks,
+              filterTime);
+      (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
+                    << ", advect, " << filterTime << endl;
+    }
   }
   else
   {
-    fprintf(stderr, "\n%i, VISapp_%i_%i, advect(particleadev), %f", step, rank, numRanks,
-            totalTime);
-    (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
-                  << ", advect, " << totalTime << endl;
+    if (rank == 0)
+    {
+      fprintf(stderr, "\n%i, VISapp_%i_%i, advect(particleadev), %f", step, rank, numRanks,
+              filterTime);
+      (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
+                    << ", advect, " << filterTime << endl;
+    }
   }
 
   //--
@@ -873,10 +888,14 @@ void runVolumeRender(vtkh::DataSet *data_set, int rank, int numRanks,
   vtkh::EVENT_END("render");
 
   float totalTime = endTimer(start);
-  fprintf(stderr, "\n%i, VISapp_%i_%i, render, %f", step, rank, numRanks,
-          totalTime);
-  (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
-                << ", render, " << totalTime << endl;
+  if (rank == 0)
+  {
+    fprintf(stderr, "\n%i, VISapp_%i_%i, render, %f", step, rank, numRanks,
+            totalTime);
+    (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
+                  << ", render, " << totalTime << endl;
+  }
+
   //--
 }
 
@@ -1116,7 +1135,7 @@ void runTest(int rank, int numRanks)
   bool metadataRead = false;
   // for cloverleaf, the start one is step 10
   long unsigned int currentStep = 0;
-  int visitFrequency=1;
+  int visitFrequency = 1;
 
   // Loop until we are out of steps to read or reach a predefined maximum
   while (true)
@@ -1165,7 +1184,6 @@ void runTest(int rank, int numRanks)
         nSteps =
             metaData.Get<fides::metadata::Size>(fides::keys::NUMBER_OF_STEPS());
 
-
         if (rank == 0)
           std::cout << "num steps " << nSteps.NumberOfItems << std::endl;
 
@@ -1184,8 +1202,11 @@ void runTest(int rank, int numRanks)
     }
 
     //----figure out how much work to do
-    fides::metadata::Vector<std::size_t> workBlocks =
+     fides::metadata::Vector<std::size_t> workBlocks =
         assignWorkBlocks(nBlocks.NumberOfItems, rank, numRanks);
+    //fides::metadata::Vector<std::size_t> workBlocks =
+    //    assignWorkBlocks4(nBlocks.NumberOfItems, rank, numRanks);
+
     if (currentStep == 0 || cloverleaf == false) // check how much work I am doing
     {
       cerr << "\nRank[" << rank << "] is working on blocks ";
@@ -1193,6 +1214,7 @@ void runTest(int rank, int numRanks)
         cerr << workBlocks.Data[z] << " ";
       cerr << endl;
     }
+
     //--
 
     //----read my blocks
@@ -1239,7 +1261,7 @@ void runTest(int rank, int numRanks)
     //--
 
     //----dump data to vtk for verification
-    if (debugVTK)
+    if (outputResults)
     {
       // output.PrintSummary(cerr);
       std::chrono::steady_clock::time_point startInternal = startTimer();
@@ -1262,6 +1284,7 @@ void runTest(int rank, int numRanks)
     //--
 
     //---- Get all the work for this rank
+    //---- The dmain decompostion is followed by the block id
     startInternal = startTimer();
     vtkh::DataSet data_set;
     for (unsigned int myBlocks = 0; myBlocks < workBlocks.Data.size();
@@ -1284,16 +1307,20 @@ void runTest(int rank, int numRanks)
     //----do all of the real work
     runCoordinator(&data_set, rank, numRanks, currentStep);
     totalTime = endTimer(start);
-    fprintf(stderr, "\n%li, VISapp_%i_%i, ts_time, %f", currentStep, rank,
-            numRanks, totalTime);
-    (*timingInfo) << currentStep << ", VISapp_" << rank << "_" << numRanks
-                  << ", ts_time, " << totalTime << endl;
+    if (rank == 0)
+    {
+      fprintf(stderr, "\n%li, VISapp_%i_%i, ts_time, %f", currentStep, rank,
+              numRanks, totalTime);
+      (*timingInfo) << currentStep << ", VISapp_" << rank << "_" << numRanks
+                    << ", ts_time, " << totalTime << endl;
+    }
+
     vtkh::TIMER_STOP("ts_time");
     //--
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    currentStep=currentStep+visitFrequency;
+    currentStep = currentStep + visitFrequency;
 
     // Check if we are done based on how many steps the user asked for
     if (currentStep >= totalSteps)
@@ -1346,7 +1373,7 @@ int main(int argc, char **argv)
   vtkh::ADD_EVENT("particle_advection_update");
   vtkh::ADD_EVENT("particle_advection_get_output");
   vtkh::ADD_EVENT("particle_advection_save_advection_files");
-  
+
   vtkh::SET_EVENT_T0();
   //--
 

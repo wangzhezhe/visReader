@@ -48,62 +48,60 @@
 //--statistics
 #include <vtkh/StatisticsDB.hpp>
 
-
 using namespace std;
 
-//debug value
+// debug value
 bool verbose = false;
-bool debugVTK = false;
-bool writeStreamlines = true;
-
 
 namespace vtkm
 {
-namespace worklet
-{
-struct CellCenter: public vtkm::worklet::WorkletVisitCellsWithPoints
-{
-    public:
-    using ControlSignature = void (CellSetIn cellSet, FieldInPoint inputPointField, FieldOut outputCellField);
-    using ExecutionSignature = void (_1, PointCount, _2, _3);
-    using InputDomain = _1;
-    template <typename CellShape, typename InputPointFieldType, typename OutputType>
-    VTKM_EXEC void operator()(CellShape shape, vtkm::IdComponent numPoints,
-    const InputPointFieldType &inputPointField, OutputType &centerOut) const
+    namespace worklet
     {
-        vtkm::Vec3f parametricCenter;
-        vtkm::exec::ParametricCoordinatesCenter(numPoints, shape, parametricCenter);
-        vtkm::exec::CellInterpolate(inputPointField, parametricCenter, shape, centerOut);
+        struct CellCenter : public vtkm::worklet::WorkletVisitCellsWithPoints
+        {
+        public:
+            using ControlSignature = void(CellSetIn cellSet, FieldInPoint inputPointField, FieldOut outputCellField);
+            using ExecutionSignature = void(_1, PointCount, _2, _3);
+            using InputDomain = _1;
+            template <typename CellShape, typename InputPointFieldType, typename OutputType>
+            VTKM_EXEC void operator()(CellShape shape, vtkm::IdComponent numPoints,
+                                      const InputPointFieldType &inputPointField, OutputType &centerOut) const
+            {
+                vtkm::Vec3f parametricCenter;
+                vtkm::exec::ParametricCoordinatesCenter(numPoints, shape, parametricCenter);
+                vtkm::exec::CellInterpolate(inputPointField, parametricCenter, shape, centerOut);
+            }
+        };
     }
-};
-}
 }
 
 void writeDataSet(vtkh::DataSet *data, std::string fName, int rank, int step)
 {
-  int numDomains = data->GetNumberOfDomains();
-  std::cerr << "num domains " << numDomains << std::endl;
-  for(int i = 0; i < numDomains; i++)
-  {
-    char fileNm[128];
-    sprintf(fileNm, "%s.step%d.rank%d.domain%d.vtk", fName.c_str(), step, rank, i);
-    vtkm::io::VTKDataSetWriter write(fileNm);
-    write.WriteDataSet(data->GetDomain(i));
-  }
+    int numDomains = data->GetNumberOfDomains();
+    std::cerr << "num domains " << numDomains << std::endl;
+    for (int i = 0; i < numDomains; i++)
+    {
+        char fileNm[128];
+        sprintf(fileNm, "%s.step%d.rank%d.domain%d.vtk", fName.c_str(), step, rank, i);
+        vtkm::io::VTKDataSetWriter write(fileNm);
+        write.WriteDataSet(data->GetDomain(i));
+    }
 }
 
 void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
-                vtkm::Particle startPoint, vtkm::Particle endPoint, int rank)
+                      vtkm::Particle startPoint, vtkm::Particle endPoint, int rank)
 {
-    if(rank == 0)
+    if (rank == 0)
     {
         ofstream *seedFile = new ofstream;
         char nm[32];
         sprintf(nm, "generatedSeeds.out");
         seedFile->open(nm, ofstream::out);
 
-
-        (*seedFile) << "x " << "y " << "z " << "value" << endl;
+        (*seedFile) << "x "
+                    << "y "
+                    << "z "
+                    << "value" << endl;
 
         /*(*seedFile) << startPoint.Pos[0] << " "
                     << startPoint.Pos[1] << " "
@@ -115,29 +113,31 @@ void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
                     << endPoint.Pos[2] << " "
                     << "1" << endl;
 */
-        for(long unsigned int i = 0; i < seeds.size(); i++)
+        for (long unsigned int i = 0; i < seeds.size(); i++)
         {
-           (*seedFile) << seeds[i].Pos[0] << " "
-                    << seeds[i].Pos[1] << " "
-                    << seeds[i].Pos[2] << " "
-                    << "0" << endl;
+            (*seedFile) << seeds[i].Pos[0] << " "
+                        << seeds[i].Pos[1] << " "
+                        << seeds[i].Pos[2] << " "
+                        << "0" << endl;
         }
 
         seedFile->close();
     }
 }
 
-void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds,int rank, int step)
+void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
 {
-    if(rank == 0)
+    if (rank == 0)
     {
         ofstream *seedFile = new ofstream;
         char nm[32];
         sprintf(nm, "generatedBoxOfSeeds_step%d.out", step);
         seedFile->open(nm, ofstream::out);
 
-
-        (*seedFile) << "x " << "y " << "z " << "value" << endl;
+        (*seedFile) << "x "
+                    << "y "
+                    << "z "
+                    << "value" << endl;
 
         /*(*seedFile) << startPoint.Pos[0] << " "
                     << startPoint.Pos[1] << " "
@@ -149,12 +149,12 @@ void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds,int rank, int step)
                     << endPoint.Pos[2] << " "
                     << "1" << endl;
 */
-        for(long unsigned int i = 0; i < seeds.size(); i++)
+        for (long unsigned int i = 0; i < seeds.size(); i++)
         {
-           (*seedFile) << seeds[i].Pos[0] << " "
-                    << seeds[i].Pos[1] << " "
-                    << seeds[i].Pos[2] << " "
-                    << "0" << endl;
+            (*seedFile) << seeds[i].Pos[0] << " "
+                        << seeds[i].Pos[1] << " "
+                        << seeds[i].Pos[2] << " "
+                        << "0" << endl;
         }
 
         seedFile->close();
@@ -168,26 +168,101 @@ void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
     sprintf(nm, "generatedSeeds_step%d_rank%d.out", step, rank);
     seedFile->open(nm, ofstream::out);
 
+    (*seedFile) << "x "
+                << "y "
+                << "z "
+                << "value" << endl;
 
-    (*seedFile) << "x " << "y " << "z " << "value" << endl;
-
-    for(long unsigned int i = 0; i < seeds.size(); i++)
+    for (long unsigned int i = 0; i < seeds.size(); i++)
     {
-       (*seedFile) << seeds[i].Pos[0] << " "
-                << seeds[i].Pos[1] << " "
-                << seeds[i].Pos[2] << " "
-                << "0" << endl;
+        (*seedFile) << seeds[i].Pos[0] << " "
+                    << seeds[i].Pos[1] << " "
+                    << seeds[i].Pos[2] << " "
+                    << "0" << endl;
     }
 
     seedFile->close();
 }
 
+// test two blocks case, horizental division
+fides::metadata::Vector<std::size_t> assignWorkBlocks4(int totalBlocks, int rank, int numRanks)
+{
+    fides::metadata::Vector<std::size_t> blockSelection;
+    for (int i = 0; i < totalBlocks; i++)
+    {
+        if (i == 2 || i == 3 || i == 6 || i == 7 || i == 10 || i == 11)
+        {
+            if (rank == 0)
+            {
+                blockSelection.Data.push_back(static_cast<std::size_t>(i));
+                std::cout << "rank:" << rank << " id " << i << std::endl;
+            }
+        }
+        else
+        {
+            if (rank != 0)
+            {
+                blockSelection.Data.push_back(static_cast<std::size_t>(i));
+                std::cout << "rank:" << rank << " id " << i << std::endl;
+            }
+        }
+    }
 
+    return blockSelection;
+}
+
+// testing for 12 blocks 2 readers
+fides::metadata::Vector<std::size_t> assignWorkBlocks3(int totalBlocks, int rank, int numRanks)
+{
+    fides::metadata::Vector<std::size_t> blockSelection;
+    for (int i = 0; i < totalBlocks; i++)
+    {
+        if (rank == 0)
+        {
+            if (i == 10)
+            {
+                blockSelection.Data.push_back(static_cast<std::size_t>(i));
+                std::cout << "rank:" << rank << " id " << i << std::endl;
+            }
+        }
+        else
+        {
+            if (i != 10)
+            {
+                blockSelection.Data.push_back(static_cast<std::size_t>(i));
+                std::cout << "rank:" << rank << " id " << i << std::endl;
+            }
+        }
+    }
+
+    return blockSelection;
+}
+
+fides::metadata::Vector<std::size_t> assignWorkBlocks2(int totalBlocks, int rank, int numRanks)
+{
+    fides::metadata::Vector<std::size_t> blockSelection;
+    int blocksPerRank = totalBlocks / numRanks;
+    std::cout << "blocksPerRank: " << blocksPerRank << std::endl;
+    for (int i = 0; i < totalBlocks; i++)
+    {
+        if (i % numRanks == rank)
+        {
+            blockSelection.Data.push_back(static_cast<std::size_t>(i));
+            std::cout << "rank:" << rank << " id " << i << std::endl;
+        }
+    }
+
+    return blockSelection;
+}
+
+// maybe add more here
+// one is continuous assigining, one is discontinuous assigning
+// one is adaptive assigning
 fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
 
-    if(totalBlocks <= rank)
+    if (totalBlocks <= rank)
     {
         printf("Warning! :: Process[%i] is wasting cycles :: too many processors for data blocks\n", rank);
         return blockSelection;
@@ -207,7 +282,9 @@ fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, int rank,
         endIndex = startIndex + (totalBlocks / numRanks);
     }
 
-    for(int i = startIndex; i < endIndex; i++)
+    std::cout << "rank " << rank << " allocated block index start:" << startIndex << " end: " << endIndex << std::endl;
+
+    for (int i = startIndex; i < endIndex; i++)
     {
         blockSelection.Data.push_back(static_cast<std::size_t>(i));
     }
