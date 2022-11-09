@@ -9,7 +9,8 @@ enum VisOpEnum
   ADVECT,
   CLOVERADVECT
 };
-VisOpEnum myVisualizationOperation = UNDEFINEDOP;
+
+VisOpEnum myVisualizationOperation = ADVECT;
 //--
 
 string fileName = "";
@@ -297,20 +298,6 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
     }
   }
 } // END checkAndSetProgramArgs
-
-// start a new timer
-std::chrono::steady_clock::time_point startTimer()
-{
-  return std::chrono::steady_clock::now();
-}
-
-// stop an existing timer and print timing message
-float endTimer(std::chrono::steady_clock::time_point start)
-{
-  auto end = std::chrono::steady_clock::now();
-  auto diff = end - start;
-  return std::chrono::duration<double, std::milli>(diff).count();
-}
 
 vtkm::rendering::Camera createWindCamera(vtkm::Bounds bounds, float zoom)
 {

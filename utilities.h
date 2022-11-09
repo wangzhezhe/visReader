@@ -51,7 +51,7 @@
 using namespace std;
 
 // debug value
-bool verbose = false;
+static bool verbose = false;
 
 namespace vtkm
 {
@@ -75,10 +75,23 @@ namespace vtkm
     }
 }
 
-void writeDataSet(vtkh::DataSet *data, std::string fName, int rank, int step)
+inline std::chrono::steady_clock::time_point startTimer()
+{
+    return std::chrono::steady_clock::now();
+}
+
+// stop an existing timer and print timing message
+inline float endTimer(std::chrono::steady_clock::time_point start)
+{
+    auto end = std::chrono::steady_clock::now();
+    auto diff = end - start;
+    return std::chrono::duration<double, std::milli>(diff).count();
+}
+
+inline void writeDataSet(vtkh::DataSet *data, std::string fName, int rank, int step)
 {
     int numDomains = data->GetNumberOfDomains();
-    std::cerr << "num domains " << numDomains << std::endl;
+    std::cerr << "rank " << rank << " num domains " << numDomains << std::endl;
     for (int i = 0; i < numDomains; i++)
     {
         char fileNm[128];
@@ -88,8 +101,8 @@ void writeDataSet(vtkh::DataSet *data, std::string fName, int rank, int step)
     }
 }
 
-void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
-                      vtkm::Particle startPoint, vtkm::Particle endPoint, int rank)
+inline void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
+                             vtkm::Particle startPoint, vtkm::Particle endPoint, int rank)
 {
     if (rank == 0)
     {
@@ -125,7 +138,7 @@ void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
     }
 }
 
-void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
+inline void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
 {
     if (rank == 0)
     {
@@ -161,7 +174,7 @@ void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
     }
 }
 
-void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
+inline void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
 {
     ofstream *seedFile = new ofstream;
     char nm[64];
@@ -185,7 +198,7 @@ void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
 }
 
 // test two blocks case, horizental division
-fides::metadata::Vector<std::size_t> assignWorkBlocks4(int totalBlocks, int rank, int numRanks)
+inline fides::metadata::Vector<std::size_t> assignWorkBlocks4(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
     for (int i = 0; i < totalBlocks; i++)
@@ -212,7 +225,7 @@ fides::metadata::Vector<std::size_t> assignWorkBlocks4(int totalBlocks, int rank
 }
 
 // testing for 12 blocks 2 readers
-fides::metadata::Vector<std::size_t> assignWorkBlocks3(int totalBlocks, int rank, int numRanks)
+inline fides::metadata::Vector<std::size_t> assignWorkBlocks3(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
     for (int i = 0; i < totalBlocks; i++)
@@ -238,7 +251,7 @@ fides::metadata::Vector<std::size_t> assignWorkBlocks3(int totalBlocks, int rank
     return blockSelection;
 }
 
-fides::metadata::Vector<std::size_t> assignWorkBlocks2(int totalBlocks, int rank, int numRanks)
+inline fides::metadata::Vector<std::size_t> assignWorkBlocks2(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
     int blocksPerRank = totalBlocks / numRanks;
@@ -258,7 +271,7 @@ fides::metadata::Vector<std::size_t> assignWorkBlocks2(int totalBlocks, int rank
 // maybe add more here
 // one is continuous assigining, one is discontinuous assigning
 // one is adaptive assigning
-fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, int rank, int numRanks)
+inline fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
 
@@ -292,6 +305,4 @@ fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, int rank,
     return blockSelection;
 }
 
-vtkh::DataSet *runGhostStripper(vtkh::DataSet *data_set, int rank, int numRanks,
-                                int step, string ghostFieldName);
 #endif /* __UTILITIES_H */
