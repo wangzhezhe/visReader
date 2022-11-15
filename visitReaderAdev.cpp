@@ -122,7 +122,7 @@ void initBackend(int rank)
   std::string backend;
   if (tmp == nullptr)
   {
-    std::cout << "no ASCENT_VTKM_BACKEND env, use openmp";
+    std::cout << "no ASCENT_VTKM_BACKEND env, use openmp" << std::endl;
     backend = "openmp";
   }
   else
@@ -134,6 +134,7 @@ void initBackend(int rank)
   {
     std::cout << "vtkm backend is:" << backend << std::endl;
   }
+  
   if (backend == "serial")
   {
     vtkh::ForceSerial();
@@ -170,7 +171,6 @@ void runCoordinator(VisOpEnum myVisualizationOperation, vtkh::DataSet *data_set,
     {
       // vtkh::DataSet *ghosts = VTKH_FILTER::runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
       // void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults);
-      std::cout << "debug fieldToOperateOn " << fieldToOperateOn << std::endl;
       VTKH_FILTER::runAdvection(data_set, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
       // VTKH_FILTER::runAdvection(ghosts, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
 
@@ -286,8 +286,9 @@ void runTest(int totalRanks, int myRank)
 
   // make sure all reader goes to same step
   MPI_Barrier(MPI_COMM_WORLD);
-
-  runCoordinator(myVisualizationOperation, &vtkhDataSets, myRank, totalRanks, 0);
+  for(int i=0;i<1;i++){
+    runCoordinator(myVisualizationOperation, &vtkhDataSets, myRank, totalRanks, i);
+  }
 
   return;
 }

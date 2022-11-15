@@ -103,17 +103,22 @@ namespace VTKH_FILTER
                           int numSeeds, int rank, int numRanks, int step, bool output)
     {
 
-        std::cout << xMin << " " << xMax << std::endl;
-        std::cout << rank << " " << numRanks << std::endl;
+        //std::cout << xMin << " " << xMax << std::endl;
+        //std::cout << rank << " " << numRanks << std::endl;
         // Dave begin changes
         // Set seeds for BBox
         std::vector<vtkm::Vec3f> allSeeds;
+        
+        //make sure all ranks use the same time and have the same seeds
+        MPI_Barrier(MPI_COMM_WORLD);
+        srand (time(NULL));
         for (int i = 0; i < numSeeds; i++)
         {
             float x = xMin + (xMax - xMin) * random01();
             float y = yMin + (yMax - yMin) * random01();
             float z = zMin + (zMax - zMin) * random01();
             allSeeds.push_back({x, y, z});
+            //std::cout << "seeds " << x << " " << y << " " << z << std::endl;
         }
 
         // auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
@@ -125,15 +130,20 @@ namespace VTKH_FILTER
         vtkm::filter::particleadvection::BoundsMap boundsMap(dataSetVec);
 
         // select seeds that belongs to current domain that the rank owns
+        // std::cout << "numSeeds " << numSeeds << std::endl;
         for (int i = 0; i < numSeeds; i++)
         {
             auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
-            if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank)
+            if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank){
                 seeds.push_back({allSeeds[i], i});
+            }
         }
-
+        
+        
+        //Counting the seeds number
         std::vector<int> seedCounts(numRanks, 0);
         seedCounts[rank] = seeds.size();
+        // std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
         MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT,
                       MPI_SUM, MPI_COMM_WORLD);
         int totNum = 0;
@@ -143,10 +153,14 @@ namespace VTKH_FILTER
         }
         if (totNum != numSeeds)
         {
-            throw std::runtime_error("totNum is supposed to equal numSeeds");
+            std::cout << "Warn: totNum " << totNum << " actual numSeeds " << numSeeds << std::endl;
+            // set the extends a little bit smaller to the actual one can avoid this issue
+            //throw std::runtime_error("totNum is supposed to equal numSeeds");
         }
+        
 
-        /*original way to create seeds
+        /*
+        original way to create seeds
         vtkm::Particle diff, startPoint, endPoint;
 
         startPoint.Pos = {xMin, yMin, zMin};
@@ -538,7 +552,7 @@ namespace VTKH_FILTER
         {
             if (rank == 0)
             {
-                fprintf(stderr, "\n%i, VISapp_%i_%i, advect(particleadev), %f", step, rank, numRanks,
+                fprintf(stderr, "\n%i, VISapp_%i_%i, advect(particleadev), %f\n", step, rank, numRanks,
                         filterTime);
                 (*timingInfo) << step << ", VISapp_" << rank << "_" << numRanks
                               << ", advect, " << filterTime << endl;
