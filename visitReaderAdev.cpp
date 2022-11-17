@@ -22,6 +22,12 @@ enum VisOpEnum
   CLOVERADVECT
 };
 
+enum AssignStrategy
+{
+  CONTINUOUS,
+  ROUNDROUBIN
+};
+
 VisOpEnum myVisualizationOperation = ADVECT;
 
 std::string visitfileName = "";
@@ -31,6 +37,9 @@ std::string fieldToOperateOn = "velocity";
 std::string seedMethod = "box";
 int unknownArg = 0;
 std::ofstream *timingInfo = NULL;
+
+// continuous round
+AssignStrategy assignStrategy = AssignStrategy::CONTINUOUS;
 
 bool cloverleaf = true;
 // this is used to decide if run the streamline or only particle advection
@@ -51,6 +60,22 @@ std::vector<int> assignBlocksToRank(int totalBlocks, int nRanks, int rank)
   for (int i = 0; i < totalBlocks; i++)
   {
     if (i >= b0 && i < b1)
+    {
+      assignedBlocks.push_back(i);
+    }
+  }
+
+  return assignedBlocks;
+}
+
+// round roubin / clock wise assign
+std::vector<int> assignBlocksToRankRR(int totalBlocks, int nRanks, int rank)
+{
+  std::vector<int> assignedBlocks;
+
+  for (int i = 0; i < totalBlocks; i++)
+  {
+    if (i % nRanks == rank)
     {
       assignedBlocks.push_back(i);
     }
@@ -83,7 +108,18 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
   if (rank == 0)
     std::cout << "numBlocks= " << numBlocks << std::endl;
 
-  blockIDList = assignBlocksToRank(numBlocks, nRanks, rank);
+  if (assignStrategy == AssignStrategy::CONTINUOUS)
+  {
+    blockIDList = assignBlocksToRank(numBlocks, nRanks, rank);
+  }
+  else if (assignStrategy == AssignStrategy::ROUNDROUBIN)
+  {
+    blockIDList = assignBlocksToRankRR(numBlocks, nRanks, rank);
+  }
+  else
+  {
+    throw std::runtime_error("unsupported assignStrategy");
+  }
 
   for (int i = 0; i < numBlocks; i++)
   {
@@ -134,7 +170,7 @@ void initBackend(int rank)
   {
     std::cout << "vtkm backend is:" << backend << std::endl;
   }
-  
+
   if (backend == "serial")
   {
     vtkh::ForceSerial();
@@ -286,7 +322,7 @@ void runTest(int totalRanks, int myRank)
 
   // make sure all reader goes to same step
   MPI_Barrier(MPI_COMM_WORLD);
-  for(int i=0;i<1;i++){
+  for(int i=0;i<2;i++){
     runCoordinator(myVisualizationOperation, &vtkhDataSets, myRank, totalRanks, i);
   }
 
@@ -440,6 +476,21 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       char str[1024];
       sprintf(str, "\t\t--advect-seed-box-extents=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
+    }
+    else if (optionName == "--assign-strategy=")
+    {
+      if (optionValue == "continuous")
+      {
+        strcat(repeatargs, "\t\t--assign-strategy=continuous\n");
+        assignStrategy = AssignStrategy::CONTINUOUS;
+      }
+      else if (optionValue == "roundroubin")
+      {
+        strcat(repeatargs, "\t\t--assign-strategy=roundroubin\n");
+        assignStrategy = AssignStrategy::ROUNDROUBIN;
+      }else{
+        throw std::runtime_error("--assign-strategy=continuous/roundroubin");
+      }
     }
     else
     {

@@ -76,6 +76,25 @@ if(USE_GPU)
     set_target_properties(reader PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
   endif()
 
+  set_source_files_properties(visitReaderAdev.cpp vtkhfilter.cpp PROPERTIES LANGUAGE "CUDA")
+  add_executable(visitReaderAdev visitReaderAdev.cpp vtkhfilter.cpp)
+  set_target_properties(visitReaderAdev PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  target_link_libraries(visitReaderAdev ${ADIOS2_LIBRARIES})
+  target_link_libraries(visitReaderAdev ${MPI_LIBRARIES})
+  target_link_libraries(visitReaderAdev ${VTKm_LIBRARIES})
+  target_link_libraries(visitReaderAdev ${VTKH_LIBRARIES})
+  target_link_libraries(visitReaderAdev ${Fides_LIBRARIES})
+
+  #target_link_libraries(reader dmalloc)
+  target_compile_options(visitReaderAdev PRIVATE "-DVTKH_ENABLE_STATISTICS")
+  target_compile_options(visitReaderAdev PRIVATE "-DVTKH_PARALLEL")
+
+
+
+
+
+
+
 else()
 
   add_executable(reader reader.cpp)
@@ -107,14 +126,6 @@ else()
   #target_link_libraries(reader dmalloc)
   target_compile_options(visitReaderAdev PRIVATE "-DVTKH_ENABLE_STATISTICS")
   target_compile_options(visitReaderAdev PRIVATE "-DVTKH_PARALLEL")
-
-  if(MPI_COMPILE_FLAGS)
-    set_target_properties(reader PROPERTIES COMPILE_FLAGS "${MPI_COMPILE_FLAGS}")
-  endif()
-
-  if(MPI_LINK_FLAGS)
-    set_target_properties(reader PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
-  endif()
 
 endif()
 
