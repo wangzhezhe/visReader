@@ -473,6 +473,10 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       VTKH_FILTER::G_zMin = minMax[4];
       VTKH_FILTER::G_zMax = minMax[5];
 
+      //std::cout << "debug extends " << VTKH_FILTER::G_xMin << " " << VTKH_FILTER::G_xMax << " " 
+      //<< VTKH_FILTER::G_yMin << " " << VTKH_FILTER::G_yMax << " " << VTKH_FILTER::G_zMin << " " 
+      //<< VTKH_FILTER::G_zMax << std::endl;
+
       char str[1024];
       sprintf(str, "\t\t--advect-seed-box-extents=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
