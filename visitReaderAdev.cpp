@@ -25,6 +25,7 @@ enum VisOpEnum
 enum AssignStrategy
 {
   CONTINUOUS,
+  CONTINUOUSOFFSET,
   ROUNDROUBIN
 };
 
@@ -62,6 +63,45 @@ std::vector<int> assignBlocksToRank(int totalBlocks, int nRanks, int rank)
     if (i >= b0 && i < b1)
     {
       assignedBlocks.push_back(i);
+    }
+  }
+
+  return assignedBlocks;
+}
+
+std::vector<int> assignBlocksToRankOffset(int totalBlocks, int nRanks, int rank, int offset)
+{
+
+  std::vector<int> assignedBlocks;
+
+  int nPer = totalBlocks / nRanks;
+  int b0 = rank * nPer, b1 = (rank + 1) * nPer;
+
+  // TODO, add better mechanism for offset setting
+  // exp
+  // only work for 2 ranks case
+  if (rank == (nRanks - 1))
+    b1 = totalBlocks;
+
+  for (int i = 0; i < totalBlocks; i++)
+  {
+    if (rank == 0)
+    {
+      if (i >= 2 && i <= 5)
+      {
+        assignedBlocks.push_back(i);
+      }
+    }
+    else
+    {
+      if (i >= 2 && i <= 5)
+      {
+        continue;
+      }
+      else
+      {
+        assignedBlocks.push_back(i);
+      }
     }
   }
 
@@ -115,6 +155,11 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
   else if (assignStrategy == AssignStrategy::ROUNDROUBIN)
   {
     blockIDList = assignBlocksToRankRR(numBlocks, nRanks, rank);
+  }
+  else if (assignStrategy == AssignStrategy::CONTINUOUSOFFSET)
+  {
+    // TODO, add offset value later
+    blockIDList = assignBlocksToRankOffset(numBlocks, nRanks, rank, 2);
   }
   else
   {
@@ -322,7 +367,8 @@ void runTest(int totalRanks, int myRank)
 
   // make sure all reader goes to same step
   MPI_Barrier(MPI_COMM_WORLD);
-  for(int i=0;i<2;i++){
+  for (int i = 0; i < 2; i++)
+  {
     runCoordinator(myVisualizationOperation, &vtkhDataSets, myRank, totalRanks, i);
   }
 
@@ -473,8 +519,8 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       VTKH_FILTER::G_zMin = minMax[4];
       VTKH_FILTER::G_zMax = minMax[5];
 
-      //std::cout << "debug extends " << VTKH_FILTER::G_xMin << " " << VTKH_FILTER::G_xMax << " " 
-      //<< VTKH_FILTER::G_yMin << " " << VTKH_FILTER::G_yMax << " " << VTKH_FILTER::G_zMin << " " 
+      // std::cout << "debug extends " << VTKH_FILTER::G_xMin << " " << VTKH_FILTER::G_xMax << " "
+      //<< VTKH_FILTER::G_yMin << " " << VTKH_FILTER::G_yMax << " " << VTKH_FILTER::G_zMin << " "
       //<< VTKH_FILTER::G_zMax << std::endl;
 
       char str[1024];
@@ -492,7 +538,14 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         strcat(repeatargs, "\t\t--assign-strategy=roundroubin\n");
         assignStrategy = AssignStrategy::ROUNDROUBIN;
-      }else{
+      }
+      else if (optionValue == "conoffset")
+      {
+        strcat(repeatargs, "\t\t--assign-strategy=conoffset\n");
+        assignStrategy = AssignStrategy::CONTINUOUSOFFSET;
+      }
+      else
+      {
         throw std::runtime_error("--assign-strategy=continuous/roundroubin");
       }
     }

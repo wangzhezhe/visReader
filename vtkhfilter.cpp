@@ -128,10 +128,10 @@ namespace VTKH_FILTER
             dataSetVec.push_back(data->GetDomain(i));
 
         vtkm::filter::particleadvection::BoundsMap boundsMap(dataSetVec);
-        //if (rank == 0 && step==0)
-        //{
-        //    boundsMap.BoundsInfo();
-        //}
+        if (rank == 0 && step==0)
+        {
+            boundsMap.BoundsInfo();
+        }
         // select seeds that belongs to current domain that the rank owns
         // std::cout << "numSeeds " << numSeeds << std::endl;
         if(allSeeds.size()!=numSeeds){

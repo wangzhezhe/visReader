@@ -89,12 +89,6 @@ if(USE_GPU)
   target_compile_options(visitReaderAdev PRIVATE "-DVTKH_ENABLE_STATISTICS")
   target_compile_options(visitReaderAdev PRIVATE "-DVTKH_PARALLEL")
 
-
-
-
-
-
-
 else()
 
   add_executable(reader reader.cpp)
@@ -129,6 +123,4 @@ else()
 
 endif()
 
-
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -MMD -g -O0 -Wall -std=c++11 -Wno-unused-variable -Wno-reorder")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -MMD -O3 -Wall -std=c++11 -Wno-unused-variable -Wno-reorder")
+add_subdirectory(workloadEstimation)
