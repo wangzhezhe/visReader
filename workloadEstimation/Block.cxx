@@ -421,6 +421,8 @@ DomainBlock::SetIDs(int id)
     return id;
 }
 
+//subdivide this block in an uniform way
+//each dimention is nx ny and nz
 void
 DomainBlock::DoSubdivideUniform(int nx, int ny, int nz)
 {
@@ -446,7 +448,7 @@ DomainBlock::DoSubdivideUniform(int nx, int ny, int nz)
                 b[4] = bbox[4] + k*dz;
                 b[5] = b[4] + dz;
 
-                sprintf(n, "%d%d%d", i,j,k);
+                sprintf(n, "%ld%ld%ld", i,j,k);
                 DomainBlock *blk = AddChild(b, n);
 
                 //Propagate the block type to the children.

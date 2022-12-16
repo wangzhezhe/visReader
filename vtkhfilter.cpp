@@ -5,6 +5,7 @@ namespace VTKH_FILTER
 {
     vtkm::FloatDefault G_xMin = 0, G_xMax = 0, G_yMin = 0, G_yMax = 0, G_zMin = 0, G_zMax = 0;
     vtkm::FloatDefault GLOBAL_ADVECT_STEP_SIZE = 0.1;
+    int G_SampleX=10,G_SampleY=10,G_SampleZ=10;
     int GLOBAL_ADVECT_NUM_STEPS = 10;
     int GLOBAL_ADVECT_NUM_SEEDS = 100;
     int GLOBAL_NUM_LEVELS = 1;
@@ -91,6 +92,81 @@ namespace VTKH_FILTER
         if (output)
             printLineOhSeeds(seeds, startPoint, endPoint, rank);
     }
+    
+    //specify how many sample in each dimension
+    //instead of using the random seeds position
+    void createBoxSample(vtkh::DataSet *data,
+                          std::vector<vtkm::Particle> &seeds,
+                          vtkm::FloatDefault xMin,
+                          vtkm::FloatDefault xMax,
+                          vtkm::FloatDefault yMin,
+                          vtkm::FloatDefault yMax,
+                          vtkm::FloatDefault zMin,
+                          vtkm::FloatDefault zMax,
+                          int sampleNumX,int sampleNumY,int sampleNumZ,
+                          int rank, int numRanks, int step){
+        
+        float deltax = (xMax - xMin)/(sampleNumX+1);
+        float deltay = (yMax - yMin)/(sampleNumY+1);
+        float deltaz = (zMax - zMin)/(sampleNumZ+1);
+        
+        int totalNumSeeds= sampleNumX*sampleNumY*sampleNumZ;
+
+        std::vector<vtkm::Vec3f> allSeeds;
+
+        for(int i=0;i<sampleNumX;i++){
+            for(int j=0;j<sampleNumY;j++){
+                for(int k=0;k<sampleNumZ;k++){
+                    float x = xMin + (i+1) * deltax;
+                    float y = yMin + (j+1) * deltay;
+                    float z = zMin + (k+1) * deltaz;
+                    allSeeds.push_back({x, y, z});                
+                }
+            }
+        }
+        // auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
+        vtkm::Id numDomains = data->GetNumberOfDomains();
+        std::vector<vtkm::cont::DataSet> dataSetVec;
+        for (vtkm::Id i = 0; i < numDomains; i++)
+            dataSetVec.push_back(data->GetDomain(i));
+
+        vtkm::filter::particleadvection::BoundsMap boundsMap(dataSetVec);
+        if (rank == 0 && step==0)
+        {
+            boundsMap.BoundsInfo();
+        }
+        // select seeds that belongs to current domain that the rank owns
+        if(allSeeds.size()!=totalNumSeeds){
+            throw std::runtime_error("allSeeds.size()!=numSeeds");
+        }
+        for (int i = 0; i < totalNumSeeds; i++)
+        {
+            auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
+            if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank)
+            {
+                seeds.push_back({allSeeds[i], i});
+            }
+        }
+
+        // Counting the seeds number
+        std::vector<int> seedCounts(numRanks, 0);
+        seedCounts[rank] = seeds.size();
+        // std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
+        MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT,
+                      MPI_SUM, MPI_COMM_WORLD);
+        int totNum = 0;
+        for (int i = 0; i < numRanks; i++)
+        {
+            totNum += seedCounts[i];
+        }
+        if (totNum != totalNumSeeds)
+        {
+            std::cout << "Warn: valid num " << totNum << " total numSeeds " << totalNumSeeds << std::endl;
+            // set the extends a little bit smaller to the actual one can avoid this issue
+            // throw std::runtime_error("totNum is supposed to equal numSeeds");
+        }
+
+    }
 
     void createBoxOfSeeds(vtkh::DataSet *data,
                           std::vector<vtkm::Particle> &seeds,
@@ -169,40 +245,6 @@ namespace VTKH_FILTER
             // set the extends a little bit smaller to the actual one can avoid this issue
             // throw std::runtime_error("totNum is supposed to equal numSeeds");
         }
-
-        /*
-        original way to create seeds
-        vtkm::Particle diff, startPoint, endPoint;
-
-        startPoint.Pos = {xMin, yMin, zMin};
-        endPoint.Pos = {xMax, yMax, zMax};
-        diff.Pos = endPoint.Pos - startPoint.Pos;
-
-        for (int i = 0; i < numSeeds; i++)
-        {
-            vtkm::Particle p;
-            p.Pos = {startPoint.Pos[0] + (diff.Pos[0] * random01()),
-                     startPoint.Pos[1] + (diff.Pos[1] * random01()),
-                     startPoint.Pos[2] + (diff.Pos[2] * random01())};
-            p.ID = static_cast<vtkm::Id>(i);
-            seeds.push_back(p);
-        }
-
-        //Make the paricle ID's unique
-        std::vector<int> particlesPerRank(numRanks, 0);
-        particlesPerRank[rank] = numSeeds;
-        MPI_Allreduce(MPI_IN_PLACE, particlesPerRank.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-
-        int offset = 0;
-        for (int i = 0; i < rank; i++)
-          offset += particlesPerRank[i];
-
-        if (offset > 0)
-        {
-          for (auto& p : seeds)
-            p.ID += offset;
-        }
-        */
 
         if (output)
             printBoxOhSeeds(seeds, rank, step);
@@ -453,19 +495,10 @@ namespace VTKH_FILTER
         }
         else if (seedMethod == "box")
         {
-            /*
-                void createBoxOfSeeds(vtkh::DataSet *data,
-                          std::vector<vtkm::Particle> &seeds,
-                          vtkm::FloatDefault xMin,
-                          vtkm::FloatDefault xMax,
-                          vtkm::FloatDefault yMin,
-                          vtkm::FloatDefault yMax,
-                          vtkm::FloatDefault zMin,
-                          vtkm::FloatDefault zMax,
-                          int numSeeds, int rank, int numRanks, int step, bool output)
-    {
-            */
             createBoxOfSeeds(data_set, seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax, GLOBAL_ADVECT_NUM_SEEDS, rank, numRanks, step, outputseeds);
+        }
+        else if (seedMethod == "boxsample"){
+            createBoxSample(data_set,seeds, G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax,G_SampleX,G_SampleY,G_SampleZ,rank, numRanks, step);
         }
         else if (seedMethod == "cell")
         {

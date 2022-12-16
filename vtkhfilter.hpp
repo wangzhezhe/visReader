@@ -40,6 +40,7 @@ namespace VTKH_FILTER
 
     extern vtkm::FloatDefault G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax;
     extern vtkm::FloatDefault GLOBAL_ADVECT_STEP_SIZE;
+    extern int G_SampleX,G_SampleY,G_SampleZ;
     extern int GLOBAL_ADVECT_NUM_STEPS;
     extern int GLOBAL_ADVECT_NUM_SEEDS;
     extern int GLOBAL_NUM_LEVELS;
