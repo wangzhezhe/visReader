@@ -1,7 +1,7 @@
-#include "vtkhfilter.hpp"
+#include "filter.hpp"
 #include "utilities.h"
 
-namespace VTKH_FILTER
+namespace FILTER
 {
     vtkm::FloatDefault G_xMin = 0, G_xMax = 0, G_yMin = 0, G_yMax = 0, G_zMin = 0, G_zMax = 0;
     vtkm::FloatDefault GLOBAL_ADVECT_STEP_SIZE = 0.1;
@@ -481,7 +481,7 @@ namespace VTKH_FILTER
             printAllOhSeeds(seeds, rank, step);
     }
 
-    void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults, bool outputseeds)
+    void runAdvection(const vtkm::cont::PartitionedDataSet& pds, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults, bool outputseeds)
     {
 
         vtkh::EVENT_BEGIN("streamline/particleadv_total");
