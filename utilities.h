@@ -11,8 +11,11 @@
 #include <vector>
 
 //--Fides
+
+#ifdef USE_FIDES
 #include <fides/DataSetReader.h>
 #include <fides/DataSetWriter.h>
+#endif
 
 //--VTKh
 #include <vtkh/vtkh.hpp>
@@ -198,6 +201,7 @@ inline void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int st
 }
 
 // test two blocks case, horizental division
+#ifdef USE_FIDES
 inline fides::metadata::Vector<std::size_t> assignWorkBlocks4(int totalBlocks, int rank, int numRanks)
 {
     fides::metadata::Vector<std::size_t> blockSelection;
@@ -304,5 +308,6 @@ inline fides::metadata::Vector<std::size_t> assignWorkBlocks(int totalBlocks, in
 
     return blockSelection;
 }
+#endif
 
 #endif /* __UTILITIES_H */
