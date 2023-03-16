@@ -1,7 +1,7 @@
-#include "vtkhfilter.hpp"
+#include "filter.hpp"
 #include "utilities.h"
 
-namespace VTKH_FILTER
+namespace FILTER
 {
     vtkm::FloatDefault G_xMin = 0, G_xMax = 0, G_yMin = 0, G_yMax = 0, G_zMin = 0, G_zMax = 0;
     vtkm::FloatDefault GLOBAL_ADVECT_STEP_SIZE = 0.1;

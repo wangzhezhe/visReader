@@ -302,10 +302,10 @@ void runCoordinator(VisOpEnum myVisualizationOperation, vtkh::DataSet *data_set,
   {
     if (cloverleaf)
     {
-      // vtkh::DataSet *ghosts = VTKH_FILTER::runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
+      // vtkh::DataSet *ghosts = FILTER::runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
       // void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults);
-      VTKH_FILTER::runAdvection(data_set, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
-      // VTKH_FILTER::runAdvection(ghosts, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
+      FILTER::runAdvection(data_set, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
+      // FILTER::runAdvection(ghosts, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
 
       // runAdvection(data_set, rank, numRanks, step);
     }
@@ -368,7 +368,7 @@ void runCoordinator(VisOpEnum myVisualizationOperation, vtkh::DataSet *data_set,
 
       // runAdvection(recenteredData, rank, numRanks, step);
 
-      VTKH_FILTER::runAdvection(recenteredData, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
+      FILTER::runAdvection(recenteredData, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
     }
   }
   else
@@ -414,7 +414,7 @@ void runTest(int totalRanks, int myRank)
     char nm[32];
     sprintf(nm, "timing.vis.%d.out", myRank);
     timingInfo->open(nm, ofstream::out);
-    VTKH_FILTER::timingInfo = timingInfo;
+    FILTER::timingInfo = timingInfo;
   }
 
   // make sure all reader goes to same step
@@ -506,21 +506,21 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
     }
     else if (optionName == "--advect-num-steps=")
     {
-      VTKH_FILTER::GLOBAL_ADVECT_NUM_STEPS = atoi(optionValue.c_str());
+      FILTER::GLOBAL_ADVECT_NUM_STEPS = atoi(optionValue.c_str());
       char str[1024];
       sprintf(str, "\t\t--advect-num-steps=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
     else if (optionName == "--advect-num-seeds=")
     {
-      VTKH_FILTER::GLOBAL_ADVECT_NUM_SEEDS = atoi(optionValue.c_str());
+      FILTER::GLOBAL_ADVECT_NUM_SEEDS = atoi(optionValue.c_str());
       char str[1024];
       sprintf(str, "\t\t--advect-num-seeds=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
     else if (optionName == "--advect-step-size=")
     {
-      VTKH_FILTER::GLOBAL_ADVECT_STEP_SIZE = atof(optionValue.c_str());
+      FILTER::GLOBAL_ADVECT_STEP_SIZE = atof(optionValue.c_str());
       char str[1024];
       sprintf(str, "\t\t--advect-step-size=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
@@ -578,9 +578,9 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
         // printf("%s\n", token);
         position++;
       }
-      VTKH_FILTER::G_SampleX = sampleVlaue[0];
-      VTKH_FILTER::G_SampleY = sampleVlaue[1];
-      VTKH_FILTER::G_SampleZ = sampleVlaue[2];
+      FILTER::G_SampleX = sampleVlaue[0];
+      FILTER::G_SampleY = sampleVlaue[1];
+      FILTER::G_SampleZ = sampleVlaue[2];
 
       char str[1024];
       sprintf(str, "\t\t--seeding-sample==%s\n", optionValue.c_str());
@@ -599,16 +599,16 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
         // printf("%s\n", token);
         position++;
       }
-      VTKH_FILTER::G_xMin = minMax[0];
-      VTKH_FILTER::G_xMax = minMax[1];
-      VTKH_FILTER::G_yMin = minMax[2];
-      VTKH_FILTER::G_yMax = minMax[3];
-      VTKH_FILTER::G_zMin = minMax[4];
-      VTKH_FILTER::G_zMax = minMax[5];
+      FILTER::G_xMin = minMax[0];
+      FILTER::G_xMax = minMax[1];
+      FILTER::G_yMin = minMax[2];
+      FILTER::G_yMax = minMax[3];
+      FILTER::G_zMin = minMax[4];
+      FILTER::G_zMax = minMax[5];
 
-      // std::cout << "debug extends " << VTKH_FILTER::G_xMin << " " << VTKH_FILTER::G_xMax << " "
-      //<< VTKH_FILTER::G_yMin << " " << VTKH_FILTER::G_yMax << " " << VTKH_FILTER::G_zMin << " "
-      //<< VTKH_FILTER::G_zMax << std::endl;
+      // std::cout << "debug extends " << FILTER::G_xMin << " " << FILTER::G_xMax << " "
+      //<< FILTER::G_yMin << " " << FILTER::G_yMax << " " << FILTER::G_zMin << " "
+      //<< FILTER::G_zMax << std::endl;
 
       char str[1024];
       sprintf(str, "\t\t--advect-seed-box-extents=%s\n", optionValue.c_str());
