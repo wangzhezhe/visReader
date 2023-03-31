@@ -4,6 +4,7 @@
 #include <vtkm/filter/flow/internal/BoundsMap.h>
 #include <vtkm/filter/flow/ParticleAdvection.h>
 #include <vtkm/filter/flow/Streamline.h>
+#include <vtkm/cont/Timer.h>
 
 namespace FILTER
 {
@@ -191,7 +192,11 @@ namespace FILTER
             printBoxOhSeeds(seeds, rank, step);
     }
 
-    void runAdvection(const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults, bool outputseeds)
+    void runAdvection(const vtkm::cont::PartitionedDataSet &pds, 
+    int rank, int numRanks, int step, std::string seedMethod, 
+    std::string fieldToOperateOn, bool cloverleaf, 
+    bool recordTrajectories, bool outputResults, bool outputseeds,
+    vtkm::cont::DeviceAdapterId& deviceID)
     {
 
         std::vector<vtkm::Particle> seeds;
@@ -241,7 +246,8 @@ namespace FILTER
             std::cout << "advect step size " << GLOBAL_ADVECT_STEP_SIZE << std::endl;
         }
 
-        std::chrono::steady_clock::time_point filterStart = std::chrono::steady_clock::now();
+        vtkm::cont::Timer timer{deviceID};
+        timer.Start();
 
         if (recordTrajectories)
         {
@@ -272,7 +278,9 @@ namespace FILTER
             auto paOutput = pa.Execute(pds);
         }
 
-        float filterTime = endTimer(filterStart);
+        timer.Stop();
+        double filterTime = timer.GetElapsedTime() * 1000;
+
 
         // output execution time
         if (recordTrajectories)

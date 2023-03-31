@@ -20,6 +20,7 @@
 
 #include <vtkm/cont/Initialize.h>
 #include <vtkm/cont/Timer.h>
+#include <vtkm/cont/DeviceAdapterTag.h>
 
 enum VisOpEnum
 {
@@ -254,7 +255,7 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
   }
 }
 
-void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step)
+void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step, vtkm::cont::DeviceAdapterId& deviceID)
 {
 
   // Use vtkh logger for stuff
@@ -268,7 +269,7 @@ void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::Partit
     {
       // vtkh::DataSet *ghosts = FILTER::runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
       // void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults);
-      FILTER::runAdvection(pds, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
+      FILTER::runAdvection(pds, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false, deviceID);
       // FILTER::runAdvection(ghosts, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
 
       // runAdvection(data_set, rank, numRanks, step);
@@ -280,7 +281,7 @@ void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::Partit
   }
 }
 
-void runTest(int totalRanks, int myRank)
+void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId& deviceID)
 {
 
   std::vector<vtkm::cont::DataSet> vtkmDataSets;
@@ -308,7 +309,7 @@ void runTest(int totalRanks, int myRank)
   {
     // run the operation twice to avoid the memory cache things for performance testing
     // with the gpu things
-    runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i);
+    runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i, deviceID);
   }
 
   return;
@@ -576,7 +577,7 @@ int main(int argc, char **argv)
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
   vtkm::cont::Timer timer{initResult.Device};
-
+  
   if (mpiRank == 0)
   {
     std::cout << "initResult.Device: " << initResult.Device.GetName() << " timer device: " << timer.GetDevice().GetName() << std::endl;
@@ -602,7 +603,7 @@ int main(int argc, char **argv)
   // Create then run vis
   try
   {
-    runTest(numTasks, mpiRank);
+    runTest(numTasks, mpiRank, initResult.Device);
   }
   catch (std::exception &e)
   {

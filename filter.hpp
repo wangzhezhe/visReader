@@ -3,7 +3,7 @@
 
 //--vtkm
 #include <vtkm/cont/PartitionedDataSet.h>
-
+#include <vtkm/cont/DeviceAdapterTag.h>
 namespace FILTER
 {
     extern vtkm::FloatDefault G_xMin, G_xMax, G_yMin, G_yMax, G_zMin, G_zMax;
@@ -16,7 +16,7 @@ namespace FILTER
 
     void runAdvection(const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step,
                       std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf,
-                      bool recordTrajectories, bool outputResults, bool outputseeds);
+                      bool recordTrajectories, bool outputResults, bool outputseeds, vtkm::cont::DeviceAdapterId& deviceID);
 }
 
 #endif
