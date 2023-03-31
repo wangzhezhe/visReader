@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include <vtkm/Particle.h>
+#include <vtkm/io/VTKDataSetWriter.h>
 
 using namespace std;
 
@@ -29,20 +31,19 @@ inline float endTimer(std::chrono::steady_clock::time_point start)
     return std::chrono::duration<double, std::milli>(diff).count();
 }
 
-/*
-inline void writeDataSet(vtkh::DataSet *data, std::string fName, int rank, int step)
+
+inline void writeDataSet(const vtkm::cont::PartitionedDataSet &pds, std::string fName, int rank, int step)
 {
-    int numDomains = data->GetNumberOfDomains();
-    std::cerr << "rank " << rank << " num domains " << numDomains << std::endl;
+    int numDomains = pds.GetNumberOfPartitions();
     for (int i = 0; i < numDomains; i++)
     {
         char fileNm[128];
         sprintf(fileNm, "%s.step%d.rank%d.domain%d.vtk", fName.c_str(), step, rank, i);
         vtkm::io::VTKDataSetWriter write(fileNm);
-        write.WriteDataSet(data->GetDomain(i));
+        write.WriteDataSet(pds.GetPartition(i));
     }
 }
-*/
+
 
 inline void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
                              vtkm::Particle startPoint, vtkm::Particle endPoint, int rank)
@@ -71,10 +72,7 @@ inline void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
 */
         for (long unsigned int i = 0; i < seeds.size(); i++)
         {
-            (*seedFile) << seeds[i].Pos[0] << " "
-                        << seeds[i].Pos[1] << " "
-                        << seeds[i].Pos[2] << " "
-                        << "0" << endl;
+            (*seedFile) << seeds[i] << endl;
         }
 
         seedFile->close();
@@ -107,10 +105,7 @@ inline void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int st
 */
         for (long unsigned int i = 0; i < seeds.size(); i++)
         {
-            (*seedFile) << seeds[i].Pos[0] << " "
-                        << seeds[i].Pos[1] << " "
-                        << seeds[i].Pos[2] << " "
-                        << "0" << endl;
+            (*seedFile) << seeds[i] << endl;
         }
 
         seedFile->close();
@@ -131,10 +126,7 @@ inline void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int st
 
     for (long unsigned int i = 0; i < seeds.size(); i++)
     {
-        (*seedFile) << seeds[i].Pos[0] << " "
-                    << seeds[i].Pos[1] << " "
-                    << seeds[i].Pos[2] << " "
-                    << "0" << endl;
+        (*seedFile) << seeds[i] << endl;
     }
 
     seedFile->close();

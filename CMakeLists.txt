@@ -25,10 +25,10 @@ if(USE_GPU)
 
 else()
   
-  add_executable(visitReaderAdev visitReaderAdev.cpp)
-  #add_executable(visitReaderAdev visitReaderAdev.cpp filter.cpp)
+  #add_executable(visitReaderAdev visitReaderAdev.cpp)
+  add_executable(visitReaderAdev visitReaderAdev.cpp filter.cpp)
   target_link_libraries(visitReaderAdev ${VTKm_LIBRARIES} MPI::MPI_CXX)
 
 endif()
 
-add_subdirectory(workloadEstimation)
+#add_subdirectory(workloadEstimation)
