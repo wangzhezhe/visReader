@@ -14,6 +14,7 @@ namespace FILTER
     int GLOBAL_ADVECT_NUM_STEPS = 10;
     int GLOBAL_ADVECT_NUM_SEEDS = 100;
     int GLOBAL_NUM_LEVELS = 1;
+    std::string CommStrategy = "sync";
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -80,13 +81,26 @@ namespace FILTER
         {
             throw std::runtime_error("allSeeds.size()!=numSeeds");
         }
+
+        // decide to put seeds in which rank
+        // go through all seeds and find associated block id
+        // the seeds vector is the actual input for this rank
         for (int i = 0; i < totalNumSeeds; i++)
         {
+            // blockIds is a vector here
+            // only choose the first one
             auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
-            if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank)
+            if (!blockIds.empty())
             {
-                seeds.push_back({allSeeds[i], i});
+                auto ranksWithBlock = boundsMap.FindRank(blockIds[0]);
+                if (ranksWithBlock[0] == rank)
+                {
+                    // std::cout << allSeeds[i] << std::endl;
+                    seeds.push_back({allSeeds[i], i});
+                }
             }
+
+            // random selection?
         }
 
         // Counting the seeds number
@@ -106,6 +120,7 @@ namespace FILTER
             // set the extends a little bit smaller to the actual one can avoid this issue
             // throw std::runtime_error("totNum is supposed to equal numSeeds");
         }
+        GLOBAL_ADVECT_NUM_SEEDS = totalNumSeeds;
     }
 
     void createBoxOfSeedsRandom(const vtkm::cont::PartitionedDataSet &pds,
@@ -158,9 +173,15 @@ namespace FILTER
         for (int i = 0; i < numSeeds; i++)
         {
             auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
-            if (!blockIds.empty() && boundsMap.FindRank(blockIds[0]) == rank)
+            if (!blockIds.empty())
             {
-                seeds.push_back({allSeeds[i], i});
+                //put all seeds to the first rank
+                auto ranksWithBlock = boundsMap.FindRank(blockIds[0]);
+                if (ranksWithBlock[0] == rank)
+                {
+                    // std::cout << allSeeds[i] << std::endl;
+                    seeds.push_back({allSeeds[i], i});
+                }
             }
             // else
             //{
@@ -192,11 +213,11 @@ namespace FILTER
             printBoxOhSeeds(seeds, rank, step);
     }
 
-    void runAdvection(const vtkm::cont::PartitionedDataSet &pds, 
-    int rank, int numRanks, int step, std::string seedMethod, 
-    std::string fieldToOperateOn, bool cloverleaf, 
-    bool recordTrajectories, bool outputResults, bool outputseeds,
-    vtkm::cont::DeviceAdapterId& deviceID)
+    void runAdvection(const vtkm::cont::PartitionedDataSet &pds,
+                      int rank, int numRanks, int step, std::string seedMethod,
+                      std::string fieldToOperateOn, bool cloverleaf,
+                      bool recordTrajectories, bool outputResults, bool outputseeds,
+                      vtkm::cont::DeviceAdapterId &deviceID)
     {
 
         std::vector<vtkm::Particle> seeds;
@@ -238,12 +259,13 @@ namespace FILTER
         }
         */
 
-        if (rank == 0)
+        if (rank == 0 && step == 0)
         {
-            
+
             std::cout << "advect maxSteps " << GLOBAL_ADVECT_NUM_STEPS << std::endl;
             std::cout << "advect seeds number " << GLOBAL_ADVECT_NUM_SEEDS << std::endl;
             std::cout << "advect step size " << GLOBAL_ADVECT_STEP_SIZE << std::endl;
+            std::cout << "communication pattern " << FILTER::CommStrategy << std::endl;
         }
 
         vtkm::cont::Timer timer{deviceID};
@@ -256,6 +278,10 @@ namespace FILTER
             streamline.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
             streamline.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             streamline.SetActiveField(fieldToOperateOn);
+            if (FILTER::CommStrategy == "sync")
+            {
+                streamline.SetUseSynchronousCommunication();
+            }
             auto streamlineOutput = streamline.Execute(pds);
 
             // TODO, maybe setting the timestep as a separate parameter
@@ -275,19 +301,22 @@ namespace FILTER
             pa.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
             pa.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             pa.SetActiveField(fieldToOperateOn);
+            if (FILTER::CommStrategy == "sync")
+            {
+                pa.SetUseSynchronousCommunication();
+            }
             auto paOutput = pa.Execute(pds);
         }
 
         timer.Stop();
         double filterTime = timer.GetElapsedTime() * 1000;
 
-
         // output execution time
         if (recordTrajectories)
         {
             if (rank == 0)
             {
-                fprintf(stderr, "%i, VISapp_%i_%i, advect(streamline), %f\n\n", step, rank, numRanks,
+                fprintf(stdout, "%i, VISapp_%i_%i, advect(streamline), %f\n\n", step, rank, numRanks,
                         filterTime);
             }
         }
@@ -295,7 +324,7 @@ namespace FILTER
         {
             if (rank == 0)
             {
-                fprintf(stderr, "%i, VISapp_%i_%i, advect(particleadev), %f\n\n", step, rank, numRanks,
+                fprintf(stdout, "%i, VISapp_%i_%i, advect(particleadev), %f\n\n", step, rank, numRanks,
                         filterTime);
             }
         }

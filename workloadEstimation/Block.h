@@ -5,7 +5,7 @@
 #include <vector>
 #include <stdio.h>
 #include <algorithm>
-#include <vtkm/filter/particleadvection/BoundsMap.h>
+#include <vtkm/filter/flow/internal/BoundsMap.h>
 
 #ifndef AVT_BLOCK_CHOWDER_H
 #define AVT_BLOCK_CHOWDER_H
@@ -18,7 +18,7 @@ public:
 
   static std::vector<std::string> nameMap;
   static std::map<int, DomainBlock *> leafMap;
-  static void CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filter::particleadvection::BoundsMap &it,
+  static void CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filter::flow::internal::BoundsMap &it,
                               bool subdivUniform, int nX, int nY, int nZ, double pct,
                               bool skipSharedFaceStats=true);
   static int TotalNumLeaves(std::vector<DomainBlock*> &v);

@@ -16,7 +16,7 @@
 #include <vtkm/cont/Initialize.h>
 #include <vtkm/cont/PartitionedDataSet.h>
 #include <vtkm/cont/DataSetBuilderUniform.h>
-#include <vtkm/filter/ParticleAdvection.h>
+
 #include <vtkm/io/VTKDataSetReader.h>
 #include <vtkm/io/VTKDataSetWriter.h>
 #include <vtkm/io/VTKDataSetReader.h>
@@ -24,16 +24,15 @@
 #include <vtkm/cont/Algorithm.h>
 #include <vtkm/cont/ArrayCopy.h>
 
-
-#include <vtkm/worklet/particleadvection/RK4Integrator.h>
-#include <vtkm/worklet/particleadvection/Stepper.h>
-#include <vtkm/worklet/ParticleAdvection.h>
-#include <vtkm/worklet/particleadvection/Particles.h>
+#include <vtkm/filter/flow/ParticleAdvection.h>
+#include <vtkm/filter/flow/worklet/RK4Integrator.h>
+#include <vtkm/filter/flow/worklet/Stepper.h>
+#include <vtkm/filter/flow/worklet/ParticleAdvection.h>
+#include <vtkm/filter/flow/worklet/Particles.h>
 
 #include <mpi.h>
 #include <vtkm/thirdparty/diy/diy.h>
 #include <vtkm/thirdparty/diy/mpi-cast.h>
-
 
 #include "Block.h"
 
@@ -42,10 +41,10 @@ int NUMVALS = -1;
 
 static vtkm::FloatDefault random_1()
 {
-  return (vtkm::FloatDefault)rand()/(vtkm::FloatDefault)RAND_MAX;
+  return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
 }
 
-void LoadData(std::string& fname, std::string& fieldNm, std::vector<vtkm::cont::DataSet>& dataSets, int rank, int nRanks)
+void LoadData(std::string &fname, std::string &fieldNm, std::vector<vtkm::cont::DataSet> &dataSets, int rank, int nRanks)
 {
   std::string buff;
   std::ifstream is;
@@ -104,18 +103,18 @@ void LoadData(std::string& fname, std::string& fieldNm, std::vector<vtkm::cont::
 // Particle_Advection <path-to-data-dir>/magField.vtk vec 200 50 0.01 output.vtk
 //
 
-void GenerateTestPts(DomainBlock* leaf, int numPts, std::vector<vtkm::Particle>& pts)
+void GenerateTestPts(DomainBlock *leaf, int numPts, std::vector<vtkm::Particle> &pts)
 {
   vtkm::FloatDefault bb[6];
   leaf->GetBBox(bb);
-  vtkm::FloatDefault dx=bb[1]-bb[0], dy=bb[3]-bb[2], dz=bb[5]-bb[4];
+  vtkm::FloatDefault dx = bb[1] - bb[0], dy = bb[3] - bb[2], dz = bb[5] - bb[4];
 
   for (int i = 0; i < numPts; i++)
   {
-    vtkm::Vec3f pt(bb[0] + random_1()*dx,
-                   bb[2] + random_1()*dy,
-                   bb[4] + random_1()*dz);
-    //Doesn't matter what the ID is....
+    vtkm::Vec3f pt(bb[0] + random_1() * dx,
+                   bb[2] + random_1() * dy,
+                   bb[4] + random_1() * dz);
+    // Doesn't matter what the ID is....
     pts.push_back(vtkm::Particle(pt, i));
   }
 }
@@ -123,29 +122,37 @@ void GenerateTestPts(DomainBlock* leaf, int numPts, std::vector<vtkm::Particle>&
 class nextBlock
 {
 public:
-    nextBlock() {cnt=0; numIters=0;}
+  nextBlock()
+  {
+    cnt = 0;
+    numIters = 0;
+  }
 
-    void visit(int i) {cnt++; numIters += i;}
+  void visit(int i)
+  {
+    cnt++;
+    numIters += i;
+  }
 
-    int cnt, numIters;
+  int cnt, numIters;
 };
 
-void RunTestPts(std::vector<DomainBlock*> blockInfo,
+void RunTestPts(std::vector<DomainBlock *> blockInfo,
                 vtkm::Id blkId,
-                DomainBlock* leaf,
-                const vtkm::filter::particleadvection::BoundsMap& boundsMap,
-                std::vector<vtkm::Particle>& seeds,
-                const vtkm::cont::DataSet& ds,
-                const std::string& fieldNm,
-                std::vector<int>& leafData,
+                DomainBlock *leaf,
+                const vtkm::filter::flow::internal::BoundsMap &boundsMap,
+                std::vector<vtkm::Particle> &seeds,
+                const vtkm::cont::DataSet &ds,
+                const std::string &fieldNm,
+                std::vector<int> &leafData,
                 vtkm::FloatDefault stepSize,
                 vtkm::Id maxSteps)
 {
   using ArrayType = vtkm::cont::ArrayHandle<vtkm::Vec3f>;
-  using FieldType = vtkm::worklet::particleadvection::VelocityField<ArrayType>;
-  using GridEvalType = vtkm::worklet::particleadvection::GridEvaluator<FieldType>;
-  using RK4Type = vtkm::worklet::particleadvection::RK4Integrator<GridEvalType>;
-  using Stepper = vtkm::worklet::particleadvection::Stepper<RK4Type, GridEvalType>;
+  using FieldType = vtkm::worklet::flow::VelocityField<ArrayType>;
+  using GridEvalType = vtkm::worklet::flow::GridEvaluator<FieldType>;
+  using RK4Type = vtkm::worklet::flow::RK4Integrator<GridEvalType>;
+  using Stepper = vtkm::worklet::flow::Stepper<RK4Type, GridEvalType>;
 
   auto seedsCopy = seeds;
 
@@ -157,10 +164,10 @@ void RunTestPts(std::vector<DomainBlock*> blockInfo,
   GridEvalType gridEval(ds, velocities);
   Stepper rk4(gridEval, stepSize);
 
-  vtkm::worklet::ParticleAdvection pa;
+  vtkm::worklet::flow::ParticleAdvection pa;
   auto res = pa.Run(rk4, seedArray, maxSteps);
 
-  std::map<int, nextBlock*> nextBlocks;
+  std::map<int, nextBlock *> nextBlocks;
 
   auto ptsPortal = res.Particles.ReadPortal();
   vtkm::Id totNumSteps = 0, totNumPts = 0;
@@ -168,9 +175,9 @@ void RunTestPts(std::vector<DomainBlock*> blockInfo,
   {
     auto pt = ptsPortal.Get(i);
     auto pt0 = seedsCopy[i];
-    auto destinations = boundsMap.FindBlocks(pt.Pos, {blkId});
+    auto destinations = boundsMap.FindBlocks(pt.GetPosition(), {blkId});
     vtkm::Id dst = -1;
-    DomainBlock* dstLeaf = nullptr;
+    DomainBlock *dstLeaf = nullptr;
 
     if (destinations.empty())
     {
@@ -183,7 +190,7 @@ void RunTestPts(std::vector<DomainBlock*> blockInfo,
     else
     {
       dst = destinations[0];
-      dstLeaf = blockInfo[dst]->GetLeaf(pt.Pos);
+      dstLeaf = blockInfo[dst]->GetLeaf(pt.GetPosition());
     }
 
     nextBlock *n;
@@ -196,23 +203,23 @@ void RunTestPts(std::vector<DomainBlock*> blockInfo,
     else
       n = it->second;
 
-    n->visit(pt.NumSteps);
-    totNumSteps += pt.NumSteps;
+    n->visit(pt.GetNumberOfSteps());
+    totNumSteps += pt.GetNumberOfSteps();
     totNumPts++;
 
     if (Rank == 0)
     {
-      std::cout<<pt.ID<<" : "<<pt0.Pos<<" --> "<<pt.Pos<<", "<<pt.NumSteps;
-      std::cout<<" :: ("<<blkId<<" --> "<<dst<<")";
-      std::cout<<" ("<<leaf->gid<<" --> ";
+      std::cout << pt.GetID() << " : " << pt0.GetPosition() << " --> " << pt.GetPosition() << ", " << pt.GetNumberOfSteps();
+      std::cout << " :: (" << blkId << " --> " << dst << ")";
+      std::cout << " (" << leaf->gid << " --> ";
       if (dstLeaf)
-        std::cout<<dstLeaf->gid<<")"<<std::endl;
+        std::cout << dstLeaf->gid << ")" << std::endl;
       else
-        std::cout<<"-1)"<<std::endl;
+        std::cout << "-1)" << std::endl;
     }
   }
 
-  //Put the nextBlocks into an array.
+  // Put the nextBlocks into an array.
   int index = 0;
   leafData.resize(nextBlocks.size() * 4, -1);
   for (auto it = nextBlocks.begin(); it != nextBlocks.end(); it++)
@@ -234,25 +241,25 @@ void RunTestPts(std::vector<DomainBlock*> blockInfo,
 }
 
 vtkm::cont::DataSet
-CreateUniformDataSet(const vtkm::Bounds& bounds,
-                     const vtkm::Id3& dims)
+CreateUniformDataSet(const vtkm::Bounds &bounds,
+                     const vtkm::Id3 &dims)
 {
   vtkm::Vec3f origin(static_cast<vtkm::FloatDefault>(bounds.X.Min),
                      static_cast<vtkm::FloatDefault>(bounds.Y.Min),
                      static_cast<vtkm::FloatDefault>(bounds.Z.Min));
   vtkm::Vec3f spacing(static_cast<vtkm::FloatDefault>(bounds.X.Length()) /
-                        static_cast<vtkm::FloatDefault>((dims[0] - 1)),
+                          static_cast<vtkm::FloatDefault>((dims[0] - 1)),
                       static_cast<vtkm::FloatDefault>(bounds.Y.Length()) /
-                        static_cast<vtkm::FloatDefault>((dims[1] - 1)),
+                          static_cast<vtkm::FloatDefault>((dims[1] - 1)),
                       static_cast<vtkm::FloatDefault>(bounds.Z.Length()) /
-                        static_cast<vtkm::FloatDefault>((dims[2] - 1)));
+                          static_cast<vtkm::FloatDefault>((dims[2] - 1)));
 
   vtkm::cont::DataSetBuilderUniform dataSetBuilder;
   vtkm::cont::DataSet ds = dataSetBuilder.Create(dims, origin, spacing);
   return ds;
 }
 
-vtkm::cont::ArrayHandle<vtkm::Vec3f> CreateConstantVectorField(vtkm::Id num, const vtkm::Vec3f& vec)
+vtkm::cont::ArrayHandle<vtkm::Vec3f> CreateConstantVectorField(vtkm::Id num, const vtkm::Vec3f &vec)
 {
   vtkm::cont::ArrayHandleConstant<vtkm::Vec3f> vecConst;
   vecConst = vtkm::cont::make_ArrayHandleConstant(vec, num);
@@ -262,7 +269,7 @@ vtkm::cont::ArrayHandle<vtkm::Vec3f> CreateConstantVectorField(vtkm::Id num, con
   return vecField;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
   MPI_Init(&argc, &argv);
   auto comm = vtkm::cont::EnvironmentTracker::GetCommunicator();
@@ -273,24 +280,25 @@ int main(int argc, char** argv)
   vtkm::FloatDefault stepSize = 0.01;
   vtkm::Id maxSteps = 1000;
 
-
   std::string dataFile = argv[1];
   std::string fieldNm = argv[2];
   std::vector<vtkm::cont::DataSet> dataSets;
-  //LoadData(dataFile, fieldNm, dataSets, Rank, Size);
+  // LoadData(dataFile, fieldNm, dataSets, Rank, Size);
 
-  std::vector<vtkm::Bounds> bounds = {vtkm::Bounds(0,1, 0,1, 0,1),
-                                      vtkm::Bounds(0,1, 0,1, 1,2),
-                                      vtkm::Bounds(0,1, 0,1, 2,3),
-                                      vtkm::Bounds(0,1, 0,1, 3,4)};
+  std::vector<vtkm::Bounds> bounds = {vtkm::Bounds(0, 1, 0, 1, 0, 1),
+                                      vtkm::Bounds(0, 1, 0, 1, 1, 2),
+                                      vtkm::Bounds(0, 1, 0, 1, 2, 3),
+                                      vtkm::Bounds(0, 1, 0, 1, 3, 4)};
   if (Size == 2)
   {
-    if (Rank == 0) bounds = {bounds[0], bounds[1]};
-    if (Rank == 1) bounds = {bounds[2], bounds[3]};
+    if (Rank == 0)
+      bounds = {bounds[0], bounds[1]};
+    if (Rank == 1)
+      bounds = {bounds[2], bounds[3]};
   }
 
-  vtkm::Vec3f vec(0,0,1);
-  for (const auto& b : bounds)
+  vtkm::Vec3f vec(0, 0, 1);
+  for (const auto &b : bounds)
   {
     auto ds = CreateUniformDataSet(b, 5);
     auto vecField = CreateConstantVectorField(ds.GetNumberOfPoints(), vec);
@@ -299,32 +307,31 @@ int main(int argc, char** argv)
     ds.PrintSummary(std::cout);
   }
 
-
   int numLocalBlocks = dataSets.size();
   int totNumBlocks = numLocalBlocks;
   MPI_Allreduce(MPI_IN_PLACE, &totNumBlocks, 1, MPI_INT, MPI_SUM, MPIComm);
 
-  vtkm::filter::particleadvection::BoundsMap boundsMap(dataSets);
-  std::vector<DomainBlock*> blockInfo;
+  vtkm::filter::flow::internal::BoundsMap boundsMap(dataSets);
+  std::vector<DomainBlock *> blockInfo;
   int NX = 2, NY = 2, NZ = 2;
   bool subdivUniform = false;
   DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, 0.10f);
 
-  int nVals = 4; //(dst, numPts, numIters, totalPtsFromSrc)
-  int nNeighbors = 7; //6 neighboring blocks, plus self.
+  int nVals = 4;      //(dst, numPts, numIters, totalPtsFromSrc)
+  int nNeighbors = 7; // 6 neighboring blocks, plus self.
   int nSubdiv = std::max(std::max(NX, NY), NZ);
   if (!subdivUniform)
     nSubdiv++;
-  NUMVALS = nVals * (nNeighbors*nSubdiv);
+  NUMVALS = nVals * (nNeighbors * nSubdiv);
 
   if (Rank == 0)
     DomainBlock::Dump(blockInfo, std::cout, 0);
 
   int totNumLeafs = DomainBlock::TotalNumLeaves(blockInfo);
   int numLeafs = blockInfo[0]->NumLeafs();
-  //std::vector<std::vector<int>> blockData(numLeafs);
-  //for (auto& bd : blockData)
-  //bd.resize(NUMVALS, -1);
+  // std::vector<std::vector<int>> blockData(numLeafs);
+  // for (auto& bd : blockData)
+  // bd.resize(NUMVALS, -1);
   /*
   int **blockData = new int*[totNumLeafs];
   for (int i = 0; i < totNumLeafs; i++)
@@ -337,14 +344,15 @@ int main(int argc, char** argv)
 
   std::vector<int> allLeafData(totNumLeafs * NUMVALS, -1);
 
-  //generate test points.
+  // generate test points.
   const int NUM_PTS = 10;
   int totalNumPts = 0;
   for (int i = 0; i < numLocalBlocks; i++)
   {
-    int blockID = boundsMap.GetBlockIdFromLocalIndex(i);
+    //int blockID = boundsMap.GetBlockIdFromLocalIndex(i);
+    int blockID = boundsMap.GetLocalBlockId(i);
 
-    const auto& ds = dataSets[i];
+    const auto &ds = dataSets[i];
     auto block = blockInfo[blockID];
 
     for (int j = 0; j < numLeafs; j++)
@@ -353,7 +361,7 @@ int main(int argc, char** argv)
       auto leaf = block->GetLeafFromIndex(j);
       if (leaf->leafBlockType == DomainBlock::INTERNAL)
       {
-        //for internal points, we really want to add the actual seeds.
+        // for internal points, we really want to add the actual seeds.
         GenerateTestPts(leaf, NUM_PTS, seeds);
         totalNumPts += NUM_PTS;
       }
@@ -365,22 +373,22 @@ int main(int argc, char** argv)
       std::vector<int> leafData;
       RunTestPts(blockInfo, blockID, leaf, boundsMap, seeds, dataSets[i], fieldNm, leafData, stepSize, maxSteps);
 
-      //print out leafData
-      std::cout<<"leafData["<<j<<"]= (dstLeaf, #pts, #steps, totPtsFromSrc)"<<std::endl;
+      // print out leafData
+      std::cout << "leafData[" << j << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)" << std::endl;
       int sz = leafData.size();
-      for (int k = 0; k < sz; k+=4)
+      for (int k = 0; k < sz; k += 4)
       {
-        std::cout<<"  ";
-        std::cout<<(k/4)<<" : ";
-        std::cout<<leafData[k+0]<<" "<<leafData[k+1]<<" "<<leafData[k+2]<<" "<<leafData[k+3];
-        std::cout<<std::endl;
+        std::cout << "  ";
+        std::cout << (k / 4) << " : ";
+        std::cout << leafData[k + 0] << " " << leafData[k + 1] << " " << leafData[k + 2] << " " << leafData[k + 3];
+        std::cout << std::endl;
       }
 
-      //Update the global block info
-      int idx = blockID*numLeafs*NUMVALS + (j*NUMVALS);
+      // Update the global block info
+      int idx = blockID * numLeafs * NUMVALS + (j * NUMVALS);
       for (int k = 0; k < sz; k++)
-        allLeafData[idx+k] = leafData[k];
-      std::cout<<std::endl;
+        allLeafData[idx + k] = leafData[k];
+      std::cout << std::endl;
     }
   }
 
@@ -395,24 +403,25 @@ int main(int argc, char** argv)
     {
 
       auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
-      std::cout<<"leafData["<<i<<"]= (dstLeaf, #pts, #steps, totPtsFromSrc)  "<<leaf->nm<<std::endl;
-      int idx = i*NUMVALS;
-      for (int j = 0; j < NUMVALS; j+= 4)
+      std::cout << "leafData[" << i << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)  " << leaf->nm << std::endl;
+      int idx = i * NUMVALS;
+      for (int j = 0; j < NUMVALS; j += 4)
       {
-        if (allLeafData[idx + j+1] == -1)
+        if (allLeafData[idx + j + 1] == -1)
           break;
 
-        leaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx+j+0]);
-        std::cout<<"  ";
-        std::cout<<(j/4)<<" : ";
-        std::cout<<allLeafData[idx+j+0]<<" "<<allLeafData[idx+j+1]<<" "<<allLeafData[idx+j+2]<<" "<<allLeafData[idx+j+3];
-        if (leaf == nullptr) std::cout<<" INTERNAL ";
-        else std::cout<<"  "<<leaf->nm;
-        std::cout<<std::endl;
+        leaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
+        std::cout << "  ";
+        std::cout << (j / 4) << " : ";
+        std::cout << allLeafData[idx + j + 0] << " " << allLeafData[idx + j + 1] << " " << allLeafData[idx + j + 2] << " " << allLeafData[idx + j + 3];
+        if (leaf == nullptr)
+          std::cout << " INTERNAL ";
+        else
+          std::cout << "  " << leaf->nm;
+        std::cout << std::endl;
       }
     }
   }
-
 
   /*
   //print out blockData
@@ -431,7 +440,6 @@ int main(int argc, char** argv)
     }
   */
 
-
 #if 0
   vtkm::filter::flow::ParticleAdvection pa;
 
@@ -448,7 +456,6 @@ int main(int argc, char** argv)
   auto output = pa.Execute(pds);
   output.PrintSummary(std::cout);
 #endif
-
 
   MPI_Finalize();
   return 0;

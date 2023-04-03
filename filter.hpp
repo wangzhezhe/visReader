@@ -13,6 +13,7 @@ namespace FILTER
     extern int GLOBAL_ADVECT_NUM_SEEDS;
     extern int GLOBAL_NUM_LEVELS;
     extern std::ofstream *timingInfo;
+    extern std::string CommStrategy;
 
     void runAdvection(const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step,
                       std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf,

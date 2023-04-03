@@ -21,6 +21,7 @@
 #include <vtkm/cont/Initialize.h>
 #include <vtkm/cont/Timer.h>
 #include <vtkm/cont/DeviceAdapterTag.h>
+#include <vtkm/filter/flow/Tracer.h>
 
 enum VisOpEnum
 {
@@ -255,12 +256,8 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
   }
 }
 
-void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step, vtkm::cont::DeviceAdapterId& deviceID)
+void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step, vtkm::cont::DeviceAdapterId &deviceID)
 {
-
-  // Use vtkh logger for stuff
-  std::stringstream ss;
-  ss << "cycle_" << step + 1;
 
   // select visualization operation to run
   if (myVisualizationOperation == VisOpEnum::ADVECT)
@@ -281,7 +278,7 @@ void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::Partit
   }
 }
 
-void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId& deviceID)
+void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
 {
 
   std::vector<vtkm::cont::DataSet> vtkmDataSets;
@@ -304,13 +301,26 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId& deviceID)
   // this need to be udpated for multiple timesteps data
 
   // make sure all reader goes to same step
-  MPI_Barrier(MPI_COMM_WORLD);
+  // init the timer
+  vtkm::filter::flow::Tracer tracer;
+  tracer.Init();
+  tracer.StartTimer();
+
   for (int i = 0; i < 2; i++)
   {
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    tracer.ResetIterationStep(i);
+
     // run the operation twice to avoid the memory cache things for performance testing
     // with the gpu things
+    tracer.TimeTraceToBuffer("FilterStart");
     runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i, deviceID);
+    MPI_Barrier(MPI_COMM_WORLD);
+    tracer.TimeTraceToBuffer("FilterEnd");
   }
+  tracer.OutputBuffer(myRank);
+  tracer.Finalize();
 
   return;
 }
@@ -523,6 +533,19 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         throw std::runtime_error("--assign-strategy=continuous/roundroubin/file");
       }
+    }else if(optionName == "--communication="){
+      if (optionValue == "sync")
+      {
+        strcat(repeatargs, "\t\t--communication=sync\n");
+        FILTER::CommStrategy = "sync";
+      }
+      else if (optionValue == "async")
+      {
+        strcat(repeatargs, "\t\t--communication=async\n");
+        FILTER::CommStrategy = "async";
+      }else{
+        throw std::runtime_error("--communication=sync/async");
+      }
     }
     else
     {
@@ -577,7 +600,7 @@ int main(int argc, char **argv)
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
   vtkm::cont::Timer timer{initResult.Device};
-  
+
   if (mpiRank == 0)
   {
     std::cout << "initResult.Device: " << initResult.Device.GetName() << " timer device: " << timer.GetDevice().GetName() << std::endl;

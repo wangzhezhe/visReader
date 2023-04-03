@@ -578,7 +578,7 @@ DomainBlock::TotalNumLeaves(std::vector<DomainBlock*> &v)
 }
 
 void
-DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filter::particleadvection::BoundsMap &it,
+DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filter::flow::internal::BoundsMap &it,
                              bool subdivUniform, int nX, int nY, int nZ, double pct,
                              bool _skipSharedFaceStats)
 {
@@ -589,6 +589,7 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
     int totLeafs = 0;
     for (int i = 0; i < nDom; i++)
     {
+      //this api is removed?
       auto bounds = it.GetBlockBounds(i);
       bbox[0] = bounds.X.Min;
       bbox[1] = bounds.X.Max;
