@@ -54,13 +54,17 @@ std::string assignFileName = "assign_options.config";
 AssignStrategy assignStrategy = AssignStrategy::CONTINUOUS;
 
 bool cloverleaf = true;
+
 // this is used to decide if run the streamline or only particle advection
 bool recordTrajectories = false;
 bool outputResults = false;
 
+// the type of information needed to trace
+// if it is -1, we do not need to trace it
+int traceParticleId = -1;
+
 std::vector<int> assignBlocksToRank(int totalBlocks, int nRanks, int rank)
 {
-
   std::vector<int> assignedBlocks;
 
   int nPer = totalBlocks / nRanks;
@@ -302,13 +306,16 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
 
   // make sure all reader goes to same step
   // init the timer
+  MPI_Barrier(MPI_COMM_WORLD);
+
   vtkm::filter::flow::Tracer tracer;
   tracer.Init();
+  tracer.SetTraceParticleId(traceParticleId);
   tracer.StartTimer();
 
-  for (int i = 0; i < 2; i++)
+  // TODO set iteration number by outside parameter
+  for (int i = 0; i < 1; i++)
   {
-
     MPI_Barrier(MPI_COMM_WORLD);
     tracer.ResetIterationStep(i);
 
@@ -456,6 +463,11 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
         strcat(repeatargs, "\t\t--seeding-method=boxrandom\n");
         seedMethod = "boxrandom";
       }
+      else if (optionValue == "domainrandom")
+      {
+        strcat(repeatargs, "\t\t--seeding-method=domainrandom\n");
+        seedMethod = "domainrandom";
+      }
       else if (optionValue == "boxfixed")
       {
         strcat(repeatargs, "\t\t--seeding-method=boxfixed\n");
@@ -533,7 +545,9 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         throw std::runtime_error("--assign-strategy=continuous/roundroubin/file");
       }
-    }else if(optionName == "--communication="){
+    }
+    else if (optionName == "--communication=")
+    {
       if (optionValue == "sync")
       {
         strcat(repeatargs, "\t\t--communication=sync\n");
@@ -543,9 +557,18 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         strcat(repeatargs, "\t\t--communication=async\n");
         FILTER::CommStrategy = "async";
-      }else{
+      }
+      else
+      {
         throw std::runtime_error("--communication=sync/async");
       }
+    }
+    else if (optionName == "--trace_particle_id=")
+    {
+      traceParticleId = atoi(optionValue.c_str());
+      char str[1024];
+      sprintf(str, "\t\t--trace_particle_id=%s\n", optionValue.c_str());
+      strcat(repeatargs, str);
     }
     else
     {
