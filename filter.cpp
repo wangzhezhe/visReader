@@ -25,8 +25,8 @@ namespace FILTER
     // fixed seeds position for debug
     void createPointsOfSeeds(std::vector<vtkm::Particle> &seeds)
     {
-        vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(1, 1, 6), 1);
-        seeds.push_back(p);
+      vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(G_xMin, G_yMin, G_zMin), 1);
+      seeds.push_back(p);
     }
 
     // specify how many sample in each dimension
@@ -86,7 +86,7 @@ namespace FILTER
           }
           MPI_Barrier(MPI_COMM_WORLD);
       }
-      MPI_Barrier(MPI_COMM_WORLD);      
+      MPI_Barrier(MPI_COMM_WORLD);
       */
 
       //std::cout<<rank<<" numSeeds= "<<seeds.size()<<std::endl;
@@ -480,7 +480,7 @@ namespace FILTER
             }
             auto paOutput = pa.Execute(pds);
         }
-        
+
         timer.Stop();
         double filterTime = timer.GetElapsedTime() * 1000;
 

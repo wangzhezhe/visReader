@@ -473,6 +473,11 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
         strcat(repeatargs, "\t\t--seeding-method=boxfixed\n");
         seedMethod = "boxfixed";
       }
+      else if (optionValue == "point")
+      {
+        strcat(repeatargs, "\t\t--seeding-method=point\n");
+        seedMethod = "point";
+      }
     }
     else if (optionName == "--seeding-sample=")
     {
@@ -622,6 +627,7 @@ int main(int argc, char **argv)
   // set necessary vtkm arguments and timer information
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
+  //vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
   vtkm::cont::Timer timer{initResult.Device};
 
   if (mpiRank == 0)

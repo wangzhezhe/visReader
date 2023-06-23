@@ -345,7 +345,7 @@ static vtkm::FloatDefault random01()
 // fixed seeds position for debug
 void createPointsOfSeeds(std::vector<vtkm::Particle> &seeds)
 {
-  vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(1, 1, 6), 1);
+  vtkm::Particle p = vtkm::Particle(vtkm::Vec3f(G_xMin, G_yMin, G_zMin), 1);
   seeds.push_back(p);
 }
 
