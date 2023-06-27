@@ -309,7 +309,7 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   MPI_Barrier(MPI_COMM_WORLD);
 
   vtkm::filter::flow::Tracer tracer;
-  tracer.Init();
+  tracer.Init(myRank);
   tracer.SetTraceParticleId(traceParticleId);
   tracer.StartTimer();
 
