@@ -307,6 +307,7 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // make sure all reader goes to same step
   // init the timer
   MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(MPI_COMM_WORLD);
 
   vtkm::filter::flow::Tracer tracer;
   tracer.Init(myRank);
