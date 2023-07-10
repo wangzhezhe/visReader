@@ -304,14 +304,14 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // this can be used to store the time step information
   // this need to be udpated for multiple timesteps data
 
-  // make sure all reader goes to same step
-  // init the timer
-  MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Barrier(MPI_COMM_WORLD);
 
   vtkm::filter::flow::Tracer tracer;
   tracer.Init(myRank);
   tracer.SetTraceParticleId(traceParticleId);
+  // make sure all reader goes to same step
+  // init the timer
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(MPI_COMM_WORLD);
   tracer.StartTimer();
 
   // TODO set iteration number by outside parameter
