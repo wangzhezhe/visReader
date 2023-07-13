@@ -110,7 +110,6 @@ namespace FILTER
 
 #if 0
 
-
         // std::cout << xMin << " " << xMax << std::endl;
         // std::cout << rank << " " << numRanks << std::endl;
         //  Dave begin changes
@@ -187,9 +186,10 @@ namespace FILTER
             // throw std::runtime_error("totNum is supposed to equal numSeeds");
         }
 
+#endif
+
         if (output)
             printBoxOhSeeds(seeds, rank, step);
-#endif
     }
 
     // specify how many sample in each dimension

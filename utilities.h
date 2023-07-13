@@ -81,11 +81,11 @@ inline void printLineOhSeeds(std::vector<vtkm::Particle> &seeds,
 
 inline void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)
 {
-    if (rank == 0)
-    {
+    //if (rank == 0)
+    //{
         ofstream *seedFile = new ofstream;
-        char nm[32];
-        sprintf(nm, "generatedBoxOfSeeds_step%d.out", step);
+        char nm[256];
+        sprintf(nm, "generatedBoxOfSeeds_step%d_rank%d.out", step, rank);
         seedFile->open(nm, ofstream::out);
 
         (*seedFile) << "x "
@@ -109,7 +109,7 @@ inline void printBoxOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int st
         }
 
         seedFile->close();
-    }
+    //}
 }
 
 inline void printAllOhSeeds(std::vector<vtkm::Particle> &seeds, int rank, int step)

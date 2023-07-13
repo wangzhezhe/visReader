@@ -58,6 +58,7 @@ bool cloverleaf = true;
 // this is used to decide if run the streamline or only particle advection
 bool recordTrajectories = false;
 bool outputResults = false;
+bool outputSeeds = false;
 
 // the type of information needed to trace
 // if it is -1, we do not need to trace it
@@ -270,7 +271,7 @@ void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::Partit
     {
       // vtkh::DataSet *ghosts = FILTER::runGhostStripper(data_set, rank, numRanks, step, "ascent_ghosts");
       // void runAdvection(vtkh::DataSet *data_set, int rank, int numRanks, int step, std::string seedMethod, std::string fieldToOperateOn, bool cloverleaf, bool recordTrajectories, bool outputResults);
-      FILTER::runAdvection(pds, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false, deviceID);
+      FILTER::runAdvection(pds, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, outputSeeds, deviceID);
       // FILTER::runAdvection(ghosts, rank, numRanks, step, seedMethod, fieldToOperateOn, cloverleaf, recordTrajectories, outputResults, false);
 
       // runAdvection(data_set, rank, numRanks, step);
@@ -303,7 +304,6 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // TODO maybe setting the field with the Global association for the data set?
   // this can be used to store the time step information
   // this need to be udpated for multiple timesteps data
-
 
   vtkm::filter::flow::Tracer tracer;
   tracer.Init(myRank);
@@ -455,6 +455,19 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       {
         strcat(repeatargs, "\t\t--output-results=false\n");
         outputResults = false;
+      }
+    }
+    else if (optionName == "--output-seeds=")
+    {
+      if (optionValue == "true")
+      {
+        strcat(repeatargs, "\t\t--output-seeds=true\n");
+        outputSeeds = true;
+      }
+      else if (optionValue == "false")
+      {
+        strcat(repeatargs, "\t\t--output-seeds=false\n");
+        outputSeeds = false;
       }
     }
     else if (optionName == "--seeding-method=")
@@ -628,7 +641,7 @@ int main(int argc, char **argv)
   // set necessary vtkm arguments and timer information
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
-  //vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
+  // vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
   vtkm::cont::Timer timer{initResult.Device};
 
   if (mpiRank == 0)
