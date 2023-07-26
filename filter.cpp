@@ -15,6 +15,8 @@ namespace FILTER
     int GLOBAL_ADVECT_NUM_SEEDS = 100;
     int GLOBAL_NUM_LEVELS = 1;
     std::string CommStrategy = "sync";
+    int GLOBAL_NUM_RECIEVERS=64;
+    int GLOBAL_NUM_PARTICLE_PER_PACKET=128;
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -476,6 +478,9 @@ namespace FILTER
             pa.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
             pa.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             pa.SetActiveField(fieldToOperateOn);
+            //this value can be set manually
+            pa.SetNumberOfRecievers(GLOBAL_NUM_RECIEVERS);
+            pa.SetNumberOfParticlesInPacket(GLOBAL_NUM_PARTICLE_PER_PACKET);
             if (FILTER::CommStrategy == "sync")
             {
                 pa.SetUseSynchronousCommunication();

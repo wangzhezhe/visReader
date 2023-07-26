@@ -589,6 +589,18 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       sprintf(str, "\t\t--trace_particle_id=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
+    else if(optionName == "--num-recievers="){
+      FILTER::GLOBAL_NUM_RECIEVERS = atoi(optionValue.c_str());
+      char str[1024];
+      sprintf(str, "\t\t--num-recievers=%s\n", optionValue.c_str());
+      strcat(repeatargs, str);
+    }
+    else if(optionName == "--num-particles-per-packet="){
+      FILTER::GLOBAL_NUM_PARTICLE_PER_PACKET = atoi(optionValue.c_str());
+      char str[1024];
+      sprintf(str, "\t\t--num-particles-per-packet=%s\n", optionValue.c_str());
+      strcat(repeatargs, str);
+    }
     else
     {
       unknownArg = 1;
