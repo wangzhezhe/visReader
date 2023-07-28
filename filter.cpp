@@ -15,8 +15,8 @@ namespace FILTER
     int GLOBAL_ADVECT_NUM_SEEDS = 100;
     int GLOBAL_NUM_LEVELS = 1;
     std::string CommStrategy = "sync";
-    int GLOBAL_NUM_RECIEVERS=64;
-    int GLOBAL_NUM_PARTICLE_PER_PACKET=128;
+    int GLOBAL_NUM_RECIEVERS = 64;
+    int GLOBAL_NUM_PARTICLE_PER_PACKET = 128;
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -45,15 +45,23 @@ namespace FILTER
     {
         std::vector<int> domsPerRank(numRanks, 0);
         domsPerRank[rank] = pds.GetNumberOfPartitions();
-        //std::cout << "rank " << rank << " " << "domsPerRank[rank] " << domsPerRank[rank] << std::endl;
+
+        // when allow duplication
+        int validPartition = 1;
+        std::cout << "rank " << rank << " "
+                  << "domsPerRank[rank] " << domsPerRank[rank] << std::endl;
         MPI_Allreduce(MPI_IN_PLACE, domsPerRank.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
         int seedIdOffset = 0;
         for (int i = 0; i < rank; i++)
-            seedIdOffset += (domsPerRank[i] * numSeedsPerDpmain);
+        {
+            // seedIdOffset += (domsPerRank[i] * numSeedsPerDpmain);
+            seedIdOffset += (validPartition * numSeedsPerDpmain);
+        }
 
         int seedID = seedIdOffset;
-        for (int i = 0; i < pds.GetNumberOfPartitions(); i++)
+        //for (int i = 0; i < pds.GetNumberOfPartitions(); i++)
+        for (int i = 0; i < validPartition; i++)
         {
             const auto &ds = pds.GetPartition(i);
             auto bounds = ds.GetCoordinateSystem().GetBounds();
@@ -97,18 +105,18 @@ namespace FILTER
         // Counting the seeds number
         std::vector<int> seedCounts(numRanks, 0);
         seedCounts[rank] = seeds.size();
-        //std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
+        // std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
         MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         int totNum = 0;
         for (int i = 0; i < numRanks; i++)
             totNum += seedCounts[i];
         // this assume that the numSeeds is for each rank
-        if (totNum != numSeedsPerDpmain * numRanks * domsPerRank[rank])
-        {
-            std::cout << "Warn: totNum " << totNum << " actual numSeeds " << numSeedsPerDpmain * numRanks * domsPerRank[rank] << std::endl;
+        //if (totNum != numSeedsPerDpmain * numRanks * validPartition)
+        //{
+            std::cout << "Warn: totNum " << totNum << " theoretical numSeeds " << numSeedsPerDpmain * numRanks * validPartition << std::endl;
             // set the extends a little bit smaller to the actual one can avoid this issue
             // throw std::runtime_error("totNum is supposed to equal numSeeds");
-        }
+        //}
 
 #if 0
 
@@ -478,7 +486,7 @@ namespace FILTER
             pa.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
             pa.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             pa.SetActiveField(fieldToOperateOn);
-            //this value can be set manually
+            // this value can be set manually
             pa.SetNumberOfRecievers(GLOBAL_NUM_RECIEVERS);
             pa.SetNumberOfParticlesInPacket(GLOBAL_NUM_PARTICLE_PER_PACKET);
             if (FILTER::CommStrategy == "sync")

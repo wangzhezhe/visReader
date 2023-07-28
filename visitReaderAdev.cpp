@@ -82,6 +82,8 @@ std::vector<int> assignBlocksToRank(int totalBlocks, int nRanks, int rank)
     }
   }
 
+
+
   return assignedBlocks;
 }
 
@@ -161,6 +163,7 @@ std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
 {
   // use the default name
   std::ifstream infile(assignFileName);
+  std::cout << "assignFileName " << assignFileName << std::endl;
   std::vector<std::vector<int>> allBlockList;
   // load the file
   std::string line;
@@ -169,8 +172,8 @@ std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
   int blockNum = 0;
   while (std::getline(infile, line))
   {
-
     // split by space
+    // std::cout << "line: " << line << std::endl; 
     idlist = getIntList(line);
     // std::cout << idlist.size() << std::endl;
     allBlockList.push_back(idlist);
@@ -178,13 +181,14 @@ std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
   }
 
   // check the file content
-  if (allBlockList.size() != nRanks)
+  if (allBlockList.size() < nRanks)
   {
-    throw std::runtime_error("allBlockList size not equals to nRanks");
+    //allow block duplication
+    throw std::runtime_error("allBlockList size should large or equal to nRanks");
   }
-  if (blockNum != totalBlocks)
+  if (blockNum < totalBlocks)
   {
-    throw std::runtime_error("blockNum size not equals to totalBlocks");
+    throw std::runtime_error("blockNum should large or equal to talBlocks");
   }
 
   return allBlockList[rank];
@@ -231,10 +235,10 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
     throw std::runtime_error("unsupported assignStrategy");
   }
 
-  for (int i = 0; i < numBlocks; i++)
+  for (int i = 0; i <numBlocks ; i++)
   {
     std::getline(is, buff);
-
+    //each rank get associated blockid
     auto it = std::find(blockIDList.begin(), blockIDList.end(), i);
     if (it != blockIDList.end())
     {
@@ -256,7 +260,16 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
       for (int ii = 0; ii < n; ii++)
         portal.Set(ii, vtkm::Vec<vtkm::Float32, 3>(1, 0, 0));
       */
-      dataSets.push_back(ds);
+      //if current rank equals to the blockid
+      //this should be put at the first position
+      //otherwise, we might forget to assign particles for this patition
+      //if there are duplicated blocks
+      if(i==rank){
+        dataSets.insert(dataSets.begin(),ds);
+      }else{
+        dataSets.push_back(ds);
+      }
+      
     }
   }
 }
