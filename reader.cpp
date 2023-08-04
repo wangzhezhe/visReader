@@ -1189,10 +1189,10 @@ void runTest(int rank, int numRanks)
     }
 
     //----figure out how much work to do
-     fides::metadata::Vector<std::size_t> workBlocks =
+    fides::metadata::Vector<std::size_t> workBlocks =
         assignWorkBlocks(nBlocks.NumberOfItems, rank, numRanks);
-    //fides::metadata::Vector<std::size_t> workBlocks =
-    //    assignWorkBlocks4(nBlocks.NumberOfItems, rank, numRanks);
+    // fides::metadata::Vector<std::size_t> workBlocks =
+    //     assignWorkBlocks4(nBlocks.NumberOfItems, rank, numRanks);
 
     if (currentStep == 0 || cloverleaf == false) // check how much work I am doing
     {
@@ -1381,9 +1381,9 @@ int main(int argc, char **argv)
   //----Print run setup info
   if (mpiRank == 0)
   {
-    //#ifdef USE_READ_OMP
-    // printf("\t - Max number of openmp threads: %i\n", omp_get_max_threads());
-    //#endif
+    // #ifdef USE_READ_OMP
+    //  printf("\t - Max number of openmp threads: %i\n", omp_get_max_threads());
+    // #endif
     printf("\t - Number of tasks=%d My rank=%d Running on %s\n", numTasks,
            mpiRank, my_hostname);
   }
