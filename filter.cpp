@@ -454,9 +454,12 @@ namespace FILTER
             streamline.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             streamline.SetActiveField(fieldToOperateOn);
             if (FILTER::CommStrategy == "sync")
-            {
-                streamline.SetUseSynchronousCommunication();
-            }
+              streamline.SetUseSynchronousCommunication();
+            else if (FILTER::CommStrategy == "async")
+              streamline.SetUseAsynchronousCommunication();
+            else if (FILTER::CommStrategy == "async_probe")
+              streamline.SetUseAsynchronousProbeCommunication();
+
             auto streamlineOutput = streamline.Execute(pds);
 
             // TODO, maybe setting the timestep as a separate parameter

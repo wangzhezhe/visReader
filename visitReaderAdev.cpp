@@ -564,6 +564,11 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
         strcat(repeatargs, "\t\t--communication=async\n");
         FILTER::CommStrategy = "async";
       }
+      else if (optionValue == "async_probe")
+      {
+        strcat(repeatargs, "\t\t--communication=async\n");
+        FILTER::CommStrategy = "async_probe";
+      }
       else
       {
         throw std::runtime_error("--communication=sync/async");
