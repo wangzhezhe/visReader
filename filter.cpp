@@ -15,8 +15,9 @@ namespace FILTER
     int GLOBAL_ADVECT_NUM_SEEDS = 100;
     int GLOBAL_NUM_LEVELS = 1;
     std::string CommStrategy = "sync";
-    int GLOBAL_NUM_RECIEVERS=64;
-    int GLOBAL_NUM_PARTICLE_PER_PACKET=128;
+    int GLOBAL_NUM_RECIEVERS = 64;
+    int GLOBAL_NUM_PARTICLE_PER_PACKET = 128;
+    bool GLOBAL_BLOCK_DUPLICATE = false;
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -43,19 +44,20 @@ namespace FILTER
                                  vtkm::FloatDefault zMax,
                                  int numSeedsPerDpmain, int rank, int numRanks, int step, bool output)
     {
-        std::vector<int> domsPerRank(numRanks, 0);
-        domsPerRank[rank] = pds.GetNumberOfPartitions();
-        //std::cout << "rank " << rank << " " << "domsPerRank[rank] " << domsPerRank[rank] << std::endl;
-        MPI_Allreduce(MPI_IN_PLACE, domsPerRank.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-        int seedIdOffset = 0;
-        for (int i = 0; i < rank; i++)
-            seedIdOffset += (domsPerRank[i] * numSeedsPerDpmain);
-
-        int seedID = seedIdOffset;
-        for (int i = 0; i < pds.GetNumberOfPartitions(); i++)
+        if (GLOBAL_BLOCK_DUPLICATE)
         {
-            const auto &ds = pds.GetPartition(i);
+            // only assign block for the first block for whole vector
+            int seedIdOffset = 0;
+            for (int i = 0; i < rank; i++)
+                seedIdOffset += (1 * numSeedsPerDpmain);
+
+            int seedID = seedIdOffset;
+            if (pds.GetNumberOfPartitions() == 0)
+            {
+                throw std::runtime_error("no loaded data for rank " + rank);
+            }
+            const auto &ds = pds.GetPartition(0);
             auto bounds = ds.GetCoordinateSystem().GetBounds();
             vtkm::FloatDefault xMin = bounds.X.Min, xMax = bounds.X.Max;
             vtkm::FloatDefault yMin = bounds.Y.Min, yMax = bounds.Y.Max;
@@ -78,117 +80,64 @@ namespace FILTER
                 seedID++;
             }
         }
-
-        /*
-        for (int i = 0; i < numRanks; i++)
+        else
         {
-            if (rank == i)
+            std::vector<int> domsPerRank(numRanks, 0);
+            domsPerRank[rank] = pds.GetNumberOfPartitions();
+            // std::cout << "rank " << rank << " " << "domsPerRank[rank] " << domsPerRank[rank] << std::endl;
+            MPI_Allreduce(MPI_IN_PLACE, domsPerRank.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+            int seedIdOffset = 0;
+            for (int i = 0; i < rank; i++)
+                seedIdOffset += (domsPerRank[i] * numSeedsPerDpmain);
+
+            int seedID = seedIdOffset;
+            for (int i = 0; i < pds.GetNumberOfPartitions(); i++)
             {
-                for (const auto& s : seeds)
-                    std::cout<<"rank_"<<i<<" "<<s<<std::endl;
-            }
-            MPI_Barrier(MPI_COMM_WORLD);
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-        */
+                const auto &ds = pds.GetPartition(i);
+                auto bounds = ds.GetCoordinateSystem().GetBounds();
+                vtkm::FloatDefault xMin = bounds.X.Min, xMax = bounds.X.Max;
+                vtkm::FloatDefault yMin = bounds.Y.Min, yMax = bounds.Y.Max;
+                vtkm::FloatDefault zMin = bounds.Z.Min, zMax = bounds.Z.Max;
+                xMin += 1e-6;
+                yMin += 1e-6;
+                zMin += 1e-6;
+                xMax -= 1e-6;
+                yMax -= 1e-6;
+                zMax -= 1e-6;
+                vtkm::FloatDefault dX = xMax - xMin, dY = yMax - yMin, dZ = zMax - zMin;
+                // std::cout<<rank<<": "<<xMin<<" "<<xMax<<" "<<yMin<<" "<<yMax<<" "<<zMin<<" "<<zMax<<std::endl;
 
-        // std::cout<<rank<<" numSeeds= "<<seeds.size()<<std::endl;
-
-        // Counting the seeds number
-        std::vector<int> seedCounts(numRanks, 0);
-        seedCounts[rank] = seeds.size();
-        //std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
-        MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        int totNum = 0;
-        for (int i = 0; i < numRanks; i++)
-            totNum += seedCounts[i];
-        // this assume that the numSeeds is for each rank
-        if (totNum != numSeedsPerDpmain * numRanks * domsPerRank[rank])
-        {
-            std::cout << "Warn: totNum " << totNum << " actual numSeeds " << numSeedsPerDpmain * numRanks * domsPerRank[rank] << std::endl;
-            // set the extends a little bit smaller to the actual one can avoid this issue
-            // throw std::runtime_error("totNum is supposed to equal numSeeds");
-        }
-
-#if 0
-
-        // std::cout << xMin << " " << xMax << std::endl;
-        // std::cout << rank << " " << numRanks << std::endl;
-        //  Dave begin changes
-        //  Set seeds for BBox
-        std::vector<vtkm::Vec3f> allSeeds;
-
-        // make sure all ranks use the same time and have the same seeds
-        MPI_Barrier(MPI_COMM_WORLD);
-        srand(time(NULL));
-        for (int i = 0; i < numSeeds; i++)
-        {
-            float x = xMin + (xMax - xMin) * random01();
-            float y = yMin + (yMax - yMin) * random01();
-            float z = zMin + (zMax - zMin) * random01();
-            allSeeds.push_back({x, y, z});
-            // std::cout << "push seed " << x << " " << y << " " << z << std::endl;
-        }
-
-        // auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
-        vtkm::Id numPartitions = pds.GetNumberOfPartitions();
-        std::vector<vtkm::cont::DataSet> dataSetVec;
-        for (vtkm::Id i = 0; i < numPartitions; i++)
-            dataSetVec.push_back(pds.GetPartition(i));
-
-        vtkm::filter::flow::internal::BoundsMap boundsMap(dataSetVec);
-        // this is used for debug
-        // if (rank == 0 && step == 0)
-        //{
-        //     boundsMap.BoundsInfo();
-        // }
-        //  select seeds that belongs to current domain that the rank owns
-        //  std::cout << "numSeeds " << numSeeds << std::endl;
-        if (allSeeds.size() != numSeeds)
-        {
-            throw std::runtime_error("allSeeds.size()!=numSeeds");
-        }
-        for (int i = 0; i < numSeeds; i++)
-        {
-            auto blockIds = boundsMap.FindBlocks(allSeeds[i]);
-            if (!blockIds.empty())
-            {
-                //put all seeds to the first rank
-                auto ranksWithBlock = boundsMap.FindRank(blockIds[0]);
-                if (ranksWithBlock[0] == rank)
+                for (int j = 0; j < numSeedsPerDpmain; j++)
                 {
-                    // std::cout << allSeeds[i] << std::endl;
-                    seeds.push_back({allSeeds[i], i});
+                    auto x = xMin + dX * random01();
+                    auto y = yMin + dY * random01();
+                    auto z = zMin + dZ * random01();
+                    seeds.push_back({{x, y, z}, seedID});
+                    seedID++;
                 }
             }
-             else
-            {
-              if (rank == 0)
-                 std::cout << "debug seed no bounds " << allSeeds[i][0] << " " << allSeeds[i][1] << " " << allSeeds[i][2] << std::endl;
-                 //std::cout << blockIds.empty() << " " << boundsMap.FindRank(blockIds[0]) << " " << rank << std::endl;
-                 //boundsMap.DebugFindBlocks(allSeeds[i]);
-             }
         }
 
         // Counting the seeds number
         std::vector<int> seedCounts(numRanks, 0);
         seedCounts[rank] = seeds.size();
         // std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
-        MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT,
-                      MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         int totNum = 0;
         for (int i = 0; i < numRanks; i++)
-        {
             totNum += seedCounts[i];
-        }
-        if (totNum != numSeeds)
+        // this assume that the numSeeds is for each rank
+        // if (totNum != numSeedsPerDpmain * numRanks * domsPerRank[rank])
+        //{
+        if (GLOBAL_BLOCK_DUPLICATE)
         {
-            std::cout << "Warn: totNum " << totNum << " actual numSeeds " << numSeeds << std::endl;
-            // set the extends a little bit smaller to the actual one can avoid this issue
-            // throw std::runtime_error("totNum is supposed to equal numSeeds");
+            std::cout << "Block duplicate, Info: totNum " << totNum << std::endl;
         }
-
-#endif
+        else
+        {
+            std::cout << "Info: totNum " << totNum << std::endl;
+        }
 
         if (output)
             printBoxOhSeeds(seeds, rank, step);
@@ -456,11 +405,11 @@ namespace FILTER
             streamline.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             streamline.SetActiveField(fieldToOperateOn);
             if (FILTER::CommStrategy == "sync")
-              streamline.SetUseSynchronousCommunication();
+                streamline.SetUseSynchronousCommunication();
             else if (FILTER::CommStrategy == "async")
-              streamline.SetUseAsynchronousCommunication();
+                streamline.SetUseAsynchronousCommunication();
             else if (FILTER::CommStrategy == "async_probe")
-              streamline.SetUseAsynchronousProbeCommunication();
+                streamline.SetUseAsynchronousProbeCommunication();
 
             auto streamlineOutput = streamline.Execute(pds);
 
@@ -481,7 +430,7 @@ namespace FILTER
             pa.SetStepSize(GLOBAL_ADVECT_STEP_SIZE);
             pa.SetNumberOfSteps(GLOBAL_ADVECT_NUM_STEPS);
             pa.SetActiveField(fieldToOperateOn);
-            //this value can be set manually
+            // this value can be set manually
             pa.SetNumberOfRecievers(GLOBAL_NUM_RECIEVERS);
             pa.SetNumberOfParticlesInPacket(GLOBAL_NUM_PARTICLE_PER_PACKET);
             if (FILTER::CommStrategy == "sync")

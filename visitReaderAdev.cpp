@@ -178,14 +178,14 @@ std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
   }
 
   // check the file content
-  if (allBlockList.size() != nRanks)
-  {
-    throw std::runtime_error("allBlockList size not equals to nRanks");
-  }
-  if (blockNum != totalBlocks)
-  {
-    throw std::runtime_error("blockNum size not equals to totalBlocks");
-  }
+  //if (allBlockList.size() != nRanks)
+  //{
+  //  throw std::runtime_error("allBlockList size not equals to nRanks");
+  //}
+  //if (blockNum != totalBlocks)
+  //{
+  //  throw std::runtime_error("blockNum size not equals to totalBlocks");
+  //}
 
   return allBlockList[rank];
 }
@@ -243,20 +243,25 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
       std::string vtkFile = dir + "/" + buff;
       vtkm::io::VTKDataSetReader reader(vtkFile);
       ds = reader.ReadDataSet();
-
-      // wrap filed by the arrayhandle
-      /*
-      auto f = ds.GetField(fieldToOperateOn).GetData();
-      vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32, 3>> fieldArray;
-      f.AsArrayHandle(fieldArray);
-      int n = fieldArray.GetNumberOfValues();
-
-      // TODO, how to set data as an approporiate type?
-      auto portal = fieldArray.WritePortal();
-      for (int ii = 0; ii < n; ii++)
-        portal.Set(ii, vtkm::Vec<vtkm::Float32, 3>(1, 0, 0));
-      */
-      dataSets.push_back(ds);
+      if (FILTER::GLOBAL_BLOCK_DUPLICATE)
+      {
+        // put the id that needs to assign seeds at first position
+        // this can only work properly when number of blocks equals
+        // to the number of ranks, and there are duplicated blocks for ranks
+        if (rank == i)
+        {
+          dataSets.insert(dataSets.begin(), ds);
+        }
+        else
+        {
+          dataSets.push_back(ds);
+        }
+      }
+      else
+      {
+        // normal push back
+        dataSets.push_back(ds);
+      }
     }
   }
 }
@@ -594,18 +599,34 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       sprintf(str, "\t\t--trace_particle_id=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
-    else if(optionName == "--num-recievers="){
+    else if (optionName == "--num-recievers=")
+    {
       FILTER::GLOBAL_NUM_RECIEVERS = atoi(optionValue.c_str());
       char str[1024];
       sprintf(str, "\t\t--num-recievers=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
-    else if(optionName == "--num-particles-per-packet="){
+    else if (optionName == "--num-particles-per-packet=")
+    {
       FILTER::GLOBAL_NUM_PARTICLE_PER_PACKET = atoi(optionValue.c_str());
       char str[1024];
       sprintf(str, "\t\t--num-particles-per-packet=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
+    else if (optionName == "--block-duplicate=")
+    {
+      if (optionValue == "true")
+      {
+        strcat(repeatargs, "\t\t--block-duplicate=true\n");
+        FILTER::GLOBAL_BLOCK_DUPLICATE = true;
+      }
+      else if (optionValue == "false")
+      {
+        strcat(repeatargs, "\t\t--block-duplicate=false\n");
+        FILTER::GLOBAL_BLOCK_DUPLICATE = false;
+      }
+    }
+
     else
     {
       unknownArg = 1;
