@@ -250,10 +250,12 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
         // to the number of ranks, and there are duplicated blocks for ranks
         if (rank == i)
         {
+          FILTER::GLOBAL_BLOCKIDS.insert(FILTER::GLOBAL_BLOCKIDS.begin(), i);
           dataSets.insert(dataSets.begin(), ds);
         }
         else
         {
+          FILTER::GLOBAL_BLOCKIDS.push_back(i);
           dataSets.push_back(ds);
         }
       }

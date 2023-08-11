@@ -18,6 +18,7 @@ namespace FILTER
     int GLOBAL_NUM_RECIEVERS = 64;
     int GLOBAL_NUM_PARTICLE_PER_PACKET = 128;
     bool GLOBAL_BLOCK_DUPLICATE = false;
+    std::vector<vtkm::Id> GLOBAL_BLOCKIDS;
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -69,7 +70,7 @@ namespace FILTER
             yMax -= 1e-6;
             zMax -= 1e-6;
             vtkm::FloatDefault dX = xMax - xMin, dY = yMax - yMin, dZ = zMax - zMin;
-            // std::cout<<rank<<": "<<xMin<<" "<<xMax<<" "<<yMin<<" "<<yMax<<" "<<zMin<<" "<<zMax<<std::endl;
+            std::cout << rank << ": " << xMin << " " << xMax << " " << yMin << " " << yMax << " " << zMin << " " << zMax << std::endl;
 
             for (int j = 0; j < numSeedsPerDpmain; j++)
             {
@@ -436,6 +437,10 @@ namespace FILTER
             if (FILTER::CommStrategy == "sync")
             {
                 pa.SetUseSynchronousCommunication();
+            }
+            if (FILTER::GLOBAL_BLOCK_DUPLICATE)
+            {
+                pa.SetBlockIDs(GLOBAL_BLOCKIDS);
             }
             auto paOutput = pa.Execute(pds);
         }
