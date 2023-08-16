@@ -410,7 +410,9 @@ namespace FILTER
             else if (FILTER::CommStrategy == "async")
                 streamline.SetUseAsynchronousCommunication();
             else if (FILTER::CommStrategy == "async_probe")
+            {
                 streamline.SetUseAsynchronousProbeCommunication();
+            }
 
             auto streamlineOutput = streamline.Execute(pds);
 
@@ -438,6 +440,19 @@ namespace FILTER
             {
                 pa.SetUseSynchronousCommunication();
             }
+            else if (FILTER::CommStrategy == "async")
+            {
+                pa.SetUseAsynchronousCommunication();
+            }
+            else if (FILTER::CommStrategy == "async_probe")
+            {
+                if (rank == 0)
+                {
+                    std::cout << "Particle advection set SetUseAsynchronousProbeCommunication" << std::endl;
+                }
+                pa.SetUseAsynchronousProbeCommunication();
+            }
+
             if (FILTER::GLOBAL_BLOCK_DUPLICATE)
             {
                 pa.SetBlockIDs(GLOBAL_BLOCKIDS);

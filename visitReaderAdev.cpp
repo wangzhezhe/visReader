@@ -586,12 +586,12 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       }
       else if (optionValue == "async_probe")
       {
-        strcat(repeatargs, "\t\t--communication=async\n");
+        strcat(repeatargs, "\t\t--communication=async_probe\n");
         FILTER::CommStrategy = "async_probe";
       }
       else
       {
-        throw std::runtime_error("--communication=sync/async");
+        throw std::runtime_error("--communication=sync/async/async_probe");
       }
     }
     else if (optionName == "--trace_particle_id=")
