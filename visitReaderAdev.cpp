@@ -178,11 +178,11 @@ std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
   }
 
   // check the file content
-  //if (allBlockList.size() != nRanks)
+  // if (allBlockList.size() != nRanks)
   //{
   //  throw std::runtime_error("allBlockList size not equals to nRanks");
   //}
-  //if (blockNum != totalBlocks)
+  // if (blockNum != totalBlocks)
   //{
   //  throw std::runtime_error("blockNum size not equals to totalBlocks");
   //}
@@ -317,21 +317,20 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   tracer.SetTraceParticleId(traceParticleId);
   // make sure all reader goes to same step
   // init the timer
-  MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Barrier(MPI_COMM_WORLD);
-  tracer.StartTimer();
 
   // TODO set iteration number by outside parameter
   for (int i = 0; i < 1; i++)
   {
+
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
     tracer.ResetIterationStep(i);
+    tracer.StartTimer();
+    tracer.TimeTraceToBuffer("FilterStart");
 
     // run the operation twice to avoid the memory cache things for performance testing
     // with the gpu things
-    tracer.TimeTraceToBuffer("FilterStart");
     runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i, deviceID);
-    MPI_Barrier(MPI_COMM_WORLD);
     tracer.TimeTraceToBuffer("FilterEnd");
   }
   tracer.OutputBuffer(myRank);
