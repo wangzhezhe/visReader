@@ -230,8 +230,9 @@ void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &bloc
   {
     throw std::runtime_error("unsupported assignStrategy");
   }
-
-  for (int i = 0; i < numBlocks; i++)
+  //using num ranks instead of numblocks
+  //since the rank may assign an empty block
+  for (int i = 0; i < nRanks; i++)
   {
     std::getline(is, buff);
 
@@ -299,8 +300,13 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // load the data
   LoadData(vtkmDataSets, blockIDList, myRank, totalRanks);
 
+
   if (vtkmDataSets.size() != blockIDList.size())
   {
+    std::cout << "Error, rank " << myRank << " vtkmDataSets size " << vtkmDataSets.size() << " blockIDList size " << blockIDList.size() << std::endl;
+    for(auto v: blockIDList){
+      std::cout << "debug blockIDList " << v << std::endl;
+    }
     throw std::runtime_error("vtkmDataSets is supposed to equal blockIDList");
   }
 
