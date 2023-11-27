@@ -394,45 +394,42 @@ int main(int argc, char **argv)
     DomainBlock tmp = *leaf;
 
     if (Rank == PRINT_RANK)
-      std::cout << "leafData[" << i << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)  " << leaf->nm << " "<<leaf->dom<<" "<<leaf->sub<<" "<<leaf->gid<<std::endl;
-      int idx = i * NUMVALS;
-      for (int j = 0; j < NUMVALS; j += 4)
-      {
-        if (allLeafData[idx + j + 1] == -1)
-          break;
+      std::cout << "leafData[" << i << "]("<<leaf->nm<<")= (idx : dstLeaf, #pts, #steps, totPtsFromSrc, dstLeafName)"<<std::endl;
+    int idx = i * NUMVALS;
+    for (int j = 0; j < NUMVALS; j += 4)
+    {
+      if (allLeafData[idx + j + 1] == -1)
+        break;
 
-        auto dstLeaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
-        int dstGID = allLeafData[idx+j+0];
-        int numICs = allLeafData[idx+j+1];
-        int numIters = allLeafData[idx+j+2];
-        int totNumICs = allLeafData[idx+j+3];
-        leaf->AddBlockData(dstLeaf, 1,2,3); //numICs, numIters, totNumICs);
-        if (Rank == PRINT_RANK)
-        {
-          std::cout << "  ";
-          std::cout << (j / 4) << " : ";
-          std::cout<<dstGID<<" "<<numICs<<" "<<numIters<<" "<<totNumICs;
-          //std::cout << allLeafData[idx + j + 0] << " " << allLeafData[idx + j + 1] << " " << allLeafData[idx + j + 2] << " " << allLeafData[idx + j + 3];
-          if (dstLeaf == nullptr)
-            std::cout << " INTERNAL ";
-          else
-            std::cout << "  " << dstLeaf->nm;
-          std::cout << std::endl;
-        }
-        if (dstGID == -1)
-          dstLeaf = leaf->GetInternal();
-        //tmp.AddBlockData(dstLeaf, numICs, numIters, totNumICs);
-        leaf->AddBlockData(dstLeaf, numICs, numIters, totNumICs);
-      }
-      if (Rank == PRINT_RANK)
-        std::cout<<"DUMPING TMP"<<std::endl;
-      //tmp.UnifyData();
-      leaf->UnifyData();
+      auto dstLeaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
+      int dstGID = allLeafData[idx+j+0];
+      int numICs = allLeafData[idx+j+1];
+      int numIters = allLeafData[idx+j+2];
+      int totNumICs = allLeafData[idx+j+3];
+      leaf->AddBlockData(dstLeaf, 1,2,3); //numICs, numIters, totNumICs);
       if (Rank == PRINT_RANK)
       {
-        DomainBlock::Dump(leaf, std::cout, 1);
-        std::cout<<std::endl<<std::endl;
+        std::cout << "  ";
+        std::cout << (j / 4) << " : ";
+        std::cout<<dstGID<<" "<<numICs<<" "<<numIters<<" "<<totNumICs;
+        if (dstLeaf == nullptr)
+          std::cout << " INTERNAL ";
+        else
+          std::cout << "  " << dstLeaf->nm;
+        std::cout << std::endl;
       }
+      if (dstGID == -1)
+        dstLeaf = leaf->GetInternal();
+      leaf->AddBlockData(dstLeaf, numICs, numIters, totNumICs);
+    }
+    if (Rank == PRINT_RANK)
+      std::cout<<"UNIFIED DATA "<<std::endl;
+    leaf->UnifyData();
+    if (Rank == PRINT_RANK)
+    {
+      DomainBlock::Dump(leaf, std::cout, 1);
+      std::cout<<std::endl<<std::endl;
+    }
   }
 
   //Put allLeafData back into blockInfo.
