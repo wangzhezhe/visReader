@@ -54,6 +54,8 @@ public:
 
   DomainBlock * GetLeafFromIndex(int idx);
   DomainBlock * GetLeaf(const vtkm::Vec3f &p);
+  DomainBlock * GetRoot();
+  DomainBlock * GetInternal();
   void GetBBox(vtkm::FloatDefault *bb);
   void GetExtents(vtkm::FloatDefault *ext);
   void GetExtents(vtkm::Vec3f &ext);

@@ -35,15 +35,21 @@
 #include <vtkm/thirdparty/diy/mpi-cast.h>
 
 #include "Block.h"
+#include "../LoadData.hpp"
+#include "../AssignStrategy.hpp"
 
 int Rank, Size;
 int NUMVALS = -1;
+
+const int PRINT_RANK = 0;
+
 
 static vtkm::FloatDefault random_1()
 {
   return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
 }
 
+/*
 void LoadData(std::string &fname, std::string &fieldNm, std::vector<vtkm::cont::DataSet> &dataSets, int rank, int nRanks)
 {
   std::string buff;
@@ -94,6 +100,7 @@ void LoadData(std::string &fname, std::string &fieldNm, std::vector<vtkm::cont::
     }
   }
 }
+*/
 
 // Example computing streamlines.
 // An example vector field is available in the vtk-m data directory: magField.vtk
@@ -171,6 +178,7 @@ void RunTestPts(std::vector<DomainBlock *> blockInfo,
 
   auto ptsPortal = res.Particles.ReadPortal();
   vtkm::Id totNumSteps = 0, totNumPts = 0;
+
   for (vtkm::Id i = 0; i < ptsPortal.GetNumberOfValues(); i++)
   {
     auto pt = ptsPortal.Get(i);
@@ -207,8 +215,9 @@ void RunTestPts(std::vector<DomainBlock *> blockInfo,
     totNumSteps += pt.GetNumberOfSteps();
     totNumPts++;
 
-    if (Rank == 0)
+    if (Rank == PRINT_RANK)
     {
+      if (i == 0) std::cout<<" *** ID, pos0, posn, #steps, id0-->idn, leaf0-->leafn"<<std::endl;
       std::cout << pt.GetID() << " : " << pt0.GetPosition() << " --> " << pt.GetPosition() << ", " << pt.GetNumberOfSteps();
       std::cout << " :: (" << blkId << " --> " << dst << ")";
       std::cout << " (" << leaf->gid << " --> ";
@@ -259,57 +268,33 @@ CreateUniformDataSet(const vtkm::Bounds &bounds,
   return ds;
 }
 
-vtkm::cont::ArrayHandle<vtkm::Vec3f> CreateConstantVectorField(vtkm::Id num, const vtkm::Vec3f &vec)
-{
-  vtkm::cont::ArrayHandleConstant<vtkm::Vec3f> vecConst;
-  vecConst = vtkm::cont::make_ArrayHandleConstant(vec, num);
-
-  vtkm::cont::ArrayHandle<vtkm::Vec3f> vecField;
-  vtkm::cont::ArrayCopy(vecConst, vecField);
-  return vecField;
-}
-
 int main(int argc, char **argv)
 {
   MPI_Init(&argc, &argv);
   auto comm = vtkm::cont::EnvironmentTracker::GetCommunicator();
   Rank = comm.rank();
   Size = comm.size();
+
+  vtkm::filter::flow::GetTracer().Get()->Init(Rank);
+  vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(0);
+  vtkm::filter::flow::GetTracer().Get()->StartTimer();
   auto MPIComm = vtkmdiy::mpi::mpi_cast(comm.handle());
 
   vtkm::FloatDefault stepSize = 0.01;
   vtkm::Id maxSteps = 1000;
 
-  std::string dataFile = argv[1];
+  std::string visitfileName = argv[1];
   std::string fieldNm = argv[2];
   std::vector<vtkm::cont::DataSet> dataSets;
-  // LoadData(dataFile, fieldNm, dataSets, Rank, Size);
+  std::vector<int> blockIDList;
+  AssignStrategy assignStrategy = AssignStrategy::CONTINUOUS;
 
-  std::vector<vtkm::Bounds> bounds = {vtkm::Bounds(0, 1, 0, 1, 0, 1),
-                                      vtkm::Bounds(0, 1, 0, 1, 1, 2),
-                                      vtkm::Bounds(0, 1, 0, 1, 2, 3),
-                                      vtkm::Bounds(0, 1, 0, 1, 3, 4)};
-  if (Size == 2)
-  {
-    if (Rank == 0)
-      bounds = {bounds[0], bounds[1]};
-    if (Rank == 1)
-      bounds = {bounds[2], bounds[3]};
-  }
-
-  vtkm::Vec3f vec(0, 0, 1);
-  for (const auto &b : bounds)
-  {
-    auto ds = CreateUniformDataSet(b, 5);
-    auto vecField = CreateConstantVectorField(ds.GetNumberOfPoints(), vec);
-    ds.AddPointField(fieldNm, vecField);
-    dataSets.push_back(ds);
-    ds.PrintSummary(std::cout);
-  }
+  LoadData(visitfileName, assignStrategy, "", dataSets, blockIDList, Rank, Size);
 
   int numLocalBlocks = dataSets.size();
   int totNumBlocks = numLocalBlocks;
   MPI_Allreduce(MPI_IN_PLACE, &totNumBlocks, 1, MPI_INT, MPI_SUM, MPIComm);
+  if (Rank == 0) std::cout<<" Tot numBlocks= "<<totNumBlocks<<std::endl;
 
   vtkm::filter::flow::internal::BoundsMap boundsMap(dataSets);
   std::vector<DomainBlock *> blockInfo;
@@ -324,8 +309,8 @@ int main(int argc, char **argv)
     nSubdiv++;
   NUMVALS = nVals * (nNeighbors * nSubdiv);
 
-  if (Rank == 0)
-    DomainBlock::Dump(blockInfo, std::cout, 0);
+  //if (Rank == 0) DomainBlock::Dump(blockInfo, std::cout, 0);
+  //MPI_Barrier(MPI_COMM_WORLD);
 
   int totNumLeafs = DomainBlock::TotalNumLeaves(blockInfo);
   int numLeafs = blockInfo[0]->NumLeafs();
@@ -374,21 +359,24 @@ int main(int argc, char **argv)
       RunTestPts(blockInfo, blockID, leaf, boundsMap, seeds, dataSets[i], fieldNm, leafData, stepSize, maxSteps);
 
       // print out leafData
-      std::cout << "leafData[" << j << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)" << std::endl;
       int sz = leafData.size();
-      for (int k = 0; k < sz; k += 4)
+      if (Rank == PRINT_RANK)
       {
-        std::cout << "  ";
-        std::cout << (k / 4) << " : ";
-        std::cout << leafData[k + 0] << " " << leafData[k + 1] << " " << leafData[k + 2] << " " << leafData[k + 3];
-        std::cout << std::endl;
+        std::cout << "leafData[" << j << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)" << std::endl;
+        for (int k = 0; k < sz; k += 4)
+        {
+          std::cout << "  ";
+          std::cout << (k / 4) << " : ";
+          std::cout << leafData[k + 0] << " " << leafData[k + 1] << " " << leafData[k + 2] << " " << leafData[k + 3];
+          std::cout << std::endl;
+        }
       }
 
       // Update the global block info
       int idx = blockID * numLeafs * NUMVALS + (j * NUMVALS);
       for (int k = 0; k < sz; k++)
         allLeafData[idx + k] = leafData[k];
-      std::cout << std::endl;
+      if (Rank == PRINT_RANK) std::cout << std::endl;
     }
   }
 
@@ -397,31 +385,76 @@ int main(int argc, char **argv)
     MPI_Allreduce(MPI_IN_PLACE, allLeafData.data(), allLeafData.size(), MPI_INT, MPI_MAX, MPIComm);
   }
 
-  if (Rank == 0)
+  std::vector<DomainBlock*> allDomainBlocks;
+  if (Rank == PRINT_RANK)
+    std::cout<<"******* Printing ALL Leaves *******: tot= "<<totNumLeafs<<std::endl;
+  for (int i = 0; i < totNumLeafs; i++)
   {
-    for (int i = 0; i < totNumLeafs; i++)
-    {
+    auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
+    DomainBlock tmp = *leaf;
 
-      auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
-      std::cout << "leafData[" << i << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)  " << leaf->nm << std::endl;
+    if (Rank == PRINT_RANK)
+      std::cout << "leafData[" << i << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)  " << leaf->nm << " "<<leaf->dom<<" "<<leaf->sub<<" "<<leaf->gid<<std::endl;
       int idx = i * NUMVALS;
       for (int j = 0; j < NUMVALS; j += 4)
       {
         if (allLeafData[idx + j + 1] == -1)
           break;
 
-        leaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
-        std::cout << "  ";
-        std::cout << (j / 4) << " : ";
-        std::cout << allLeafData[idx + j + 0] << " " << allLeafData[idx + j + 1] << " " << allLeafData[idx + j + 2] << " " << allLeafData[idx + j + 3];
-        if (leaf == nullptr)
-          std::cout << " INTERNAL ";
-        else
-          std::cout << "  " << leaf->nm;
-        std::cout << std::endl;
+        auto dstLeaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
+        int dstGID = allLeafData[idx+j+0];
+        int numICs = allLeafData[idx+j+1];
+        int numIters = allLeafData[idx+j+2];
+        int totNumICs = allLeafData[idx+j+3];
+        leaf->AddBlockData(dstLeaf, 1,2,3); //numICs, numIters, totNumICs);
+        if (Rank == PRINT_RANK)
+        {
+          std::cout << "  ";
+          std::cout << (j / 4) << " : ";
+          std::cout<<dstGID<<" "<<numICs<<" "<<numIters<<" "<<totNumICs;
+          //std::cout << allLeafData[idx + j + 0] << " " << allLeafData[idx + j + 1] << " " << allLeafData[idx + j + 2] << " " << allLeafData[idx + j + 3];
+          if (dstLeaf == nullptr)
+            std::cout << " INTERNAL ";
+          else
+            std::cout << "  " << dstLeaf->nm;
+          std::cout << std::endl;
+        }
+        if (dstGID == -1)
+          dstLeaf = leaf->GetInternal();
+        //tmp.AddBlockData(dstLeaf, numICs, numIters, totNumICs);
+        leaf->AddBlockData(dstLeaf, numICs, numIters, totNumICs);
       }
-    }
+      if (Rank == PRINT_RANK)
+        std::cout<<"DUMPING TMP"<<std::endl;
+      //tmp.UnifyData();
+      leaf->UnifyData();
+      if (Rank == PRINT_RANK)
+      {
+        DomainBlock::Dump(leaf, std::cout, 1);
+        std::cout<<std::endl<<std::endl;
+      }
   }
+
+  //Put allLeafData back into blockInfo.
+  for (int i = 0; i < totNumLeafs; i++)
+  {
+    auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
+    if (leaf->sub == 0)
+      allDomainBlocks.push_back(leaf);
+  }
+
+  if (Rank == PRINT_RANK)
+  {
+    std::cout<<std::endl<<std::endl;
+    std::cout<<"********************  blockInfo ********************"<<std::endl;
+    DomainBlock::Dump(allDomainBlocks, std::cout, 2);
+  }
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Finalize();
+  return(0);
+
+
 
   /*
   //print out blockData

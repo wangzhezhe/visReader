@@ -1,0 +1,12 @@
+
+#ifndef ASSIGN_STRATEGY_HPP
+#define ASSIGN_STRATEGY_HPP
+
+enum AssignStrategy
+{
+  CONTINUOUS,
+  ASSIGNFILE,
+  ROUNDROUBIN
+};
+
+#endif

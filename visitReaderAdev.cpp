@@ -23,6 +23,9 @@
 #include <vtkm/cont/DeviceAdapterTag.h>
 #include <vtkm/filter/flow/Tracer.h>
 
+#include "LoadData.hpp"
+#include "AssignStrategy.hpp"
+
 enum VisOpEnum
 {
   UNDEFINEDOP,
@@ -30,13 +33,6 @@ enum VisOpEnum
   VOLUME,
   ADVECT,
   CLOVERADVECT
-};
-
-enum AssignStrategy
-{
-  CONTINUOUS,
-  ASSIGNFILE,
-  ROUNDROUBIN
 };
 
 VisOpEnum myVisualizationOperation = ADVECT;
@@ -63,211 +59,6 @@ bool outputSeeds = false;
 // the type of information needed to trace
 // if it is -1, we do not need to trace it
 int traceParticleId = -1;
-
-std::vector<int> assignBlocksToRank(int totalBlocks, int nRanks, int rank)
-{
-  std::vector<int> assignedBlocks;
-
-  int nPer = totalBlocks / nRanks;
-  int b0 = rank * nPer, b1 = (rank + 1) * nPer;
-
-  if (rank == (nRanks - 1))
-    b1 = totalBlocks;
-
-  for (int i = 0; i < totalBlocks; i++)
-  {
-    if (i >= b0 && i < b1)
-    {
-      assignedBlocks.push_back(i);
-    }
-  }
-
-  return assignedBlocks;
-}
-
-std::vector<int> assignBlocksToRankOffset(int totalBlocks, int nRanks, int rank, int offset)
-{
-
-  std::vector<int> assignedBlocks;
-
-  int nPer = totalBlocks / nRanks;
-  int b0 = rank * nPer, b1 = (rank + 1) * nPer;
-
-  // TODO, add better mechanism for offset setting
-  // exp
-  // only work for 2 ranks case
-  if (rank == (nRanks - 1))
-    b1 = totalBlocks;
-
-  for (int i = 0; i < totalBlocks; i++)
-  {
-    if (rank == 0)
-    {
-      if (i >= 2 && i <= 5)
-      {
-        assignedBlocks.push_back(i);
-      }
-    }
-    else
-    {
-      if (i >= 2 && i <= 5)
-      {
-        continue;
-      }
-      else
-      {
-        assignedBlocks.push_back(i);
-      }
-    }
-  }
-
-  return assignedBlocks;
-}
-
-// round roubin / clock wise assign
-std::vector<int> assignBlocksToRankRR(int totalBlocks, int nRanks, int rank)
-{
-  std::vector<int> assignedBlocks;
-
-  for (int i = 0; i < totalBlocks; i++)
-  {
-    if (i % nRanks == rank)
-    {
-      assignedBlocks.push_back(i);
-    }
-  }
-
-  return assignedBlocks;
-}
-
-vector<int> getIntList(std::string str)
-{
-  vector<int> intList;
-  int leftIdx = 0;
-  int rightIdx = 0;
-  while (rightIdx < str.size())
-  {
-    while (rightIdx < str.size() && str[rightIdx] != ' ')
-      rightIdx++;
-    intList.push_back(std::stoi(str.substr(leftIdx, rightIdx - leftIdx)));
-    leftIdx = rightIdx + 1;
-    rightIdx = rightIdx + 1;
-  }
-  return intList;
-}
-
-// assign by file
-std::vector<int> assignByFile(int totalBlocks, int nRanks, int rank)
-{
-  // use the default name
-  std::ifstream infile(assignFileName);
-  std::vector<std::vector<int>> allBlockList;
-  // load the file
-  std::string line;
-  std::vector<int> idlist;
-  // assume the input file is correct
-  int blockNum = 0;
-  while (std::getline(infile, line))
-  {
-
-    // split by space
-    idlist = getIntList(line);
-    // std::cout << idlist.size() << std::endl;
-    allBlockList.push_back(idlist);
-    blockNum += idlist.size();
-  }
-
-  // check the file content
-  // if (allBlockList.size() != nRanks)
-  //{
-  //  throw std::runtime_error("allBlockList size not equals to nRanks");
-  //}
-  // if (blockNum != totalBlocks)
-  //{
-  //  throw std::runtime_error("blockNum size not equals to totalBlocks");
-  //}
-
-  return allBlockList[rank];
-}
-
-void LoadData(std::vector<vtkm::cont::DataSet> &dataSets, std::vector<int> &blockIDList, int rank, int nRanks)
-{
-  std::string buff;
-  std::ifstream is;
-  is.open(visitfileName);
-  std::cout << "Opening: " << visitfileName << std::endl;
-  if (!is)
-  {
-    std::cout << "File not found! : " << visitfileName << std::endl;
-    throw "unknown file: " + visitfileName;
-  }
-
-  auto p0 = visitfileName.rfind(".visit");
-  if (p0 == std::string::npos)
-    throw "Only .visit files are supported.";
-  auto tmp = visitfileName.substr(0, p0);
-  auto p1 = tmp.rfind("/");
-  auto dir = tmp.substr(0, p1);
-
-  std::getline(is, buff);
-  auto numBlocks = std::stoi(buff.substr(buff.find("!NBLOCKS ") + 9, buff.size()));
-  if (rank == 0)
-    std::cout << "numBlocks= " << numBlocks << std::endl;
-
-  if (assignStrategy == AssignStrategy::CONTINUOUS)
-  {
-    blockIDList = assignBlocksToRank(numBlocks, nRanks, rank);
-  }
-  else if (assignStrategy == AssignStrategy::ROUNDROUBIN)
-  {
-    blockIDList = assignBlocksToRankRR(numBlocks, nRanks, rank);
-  }
-  else if (assignStrategy == AssignStrategy::ASSIGNFILE)
-  {
-    blockIDList = assignByFile(numBlocks, nRanks, rank);
-  }
-  else
-  {
-    throw std::runtime_error("unsupported assignStrategy");
-  }
-  //using num ranks instead of numblocks
-  //since the rank may assign an empty block
-  for (int i = 0; i < nRanks; i++)
-  {
-    std::getline(is, buff);
-
-    auto it = std::find(blockIDList.begin(), blockIDList.end(), i);
-    if (it != blockIDList.end())
-    {
-      std::cout << "rank " << rank << " assign blockid " << i << std::endl;
-      vtkm::cont::DataSet ds;
-      std::string vtkFile = dir + "/" + buff;
-      vtkm::io::VTKDataSetReader reader(vtkFile);
-      ds = reader.ReadDataSet();
-      if (FILTER::GLOBAL_BLOCK_DUPLICATE)
-      {
-        // put the id that needs to assign seeds at first position
-        // this can only work properly when number of blocks equals
-        // to the number of ranks, and there are duplicated blocks for ranks
-        if (rank == i)
-        {
-          FILTER::GLOBAL_BLOCKIDS.insert(FILTER::GLOBAL_BLOCKIDS.begin(), i);
-          dataSets.insert(dataSets.begin(), ds);
-        }
-        else
-        {
-          FILTER::GLOBAL_BLOCKIDS.push_back(i);
-          dataSets.push_back(ds);
-        }
-      }
-      else
-      {
-        // normal push back
-        dataSets.push_back(ds);
-      }
-    }
-  }
-}
 
 void runCoordinator(VisOpEnum myVisualizationOperation, const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step, vtkm::cont::DeviceAdapterId &deviceID)
 {
@@ -298,7 +89,7 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   std::vector<int> blockIDList;
 
   // load the data
-  LoadData(vtkmDataSets, blockIDList, myRank, totalRanks);
+  LoadData(visitfileName, assignStrategy, assignFileName, vtkmDataSets, blockIDList, myRank, totalRanks);
 
 
   if (vtkmDataSets.size() != blockIDList.size())
@@ -318,9 +109,8 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // this can be used to store the time step information
   // this need to be udpated for multiple timesteps data
 
-  vtkm::filter::flow::Tracer tracer;
-  tracer.Init(myRank);
-  tracer.SetTraceParticleId(traceParticleId);
+  vtkm::filter::flow::GetTracer().Get()->Init(myRank);
+  vtkm::filter::flow::GetTracer().Get()->SetTraceParticleId(traceParticleId);
   // make sure all reader goes to same step
   // init the timer
 
@@ -330,17 +120,17 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
 
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
-    tracer.ResetIterationStep(i);
-    tracer.StartTimer();
-    tracer.TimeTraceToBuffer("FilterStart");
+    vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(i);
+    vtkm::filter::flow::GetTracer().Get()->StartTimer();
+    vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
 
     // run the operation twice to avoid the memory cache things for performance testing
     // with the gpu things
     runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i, deviceID);
-    tracer.TimeTraceToBuffer("FilterEnd");
+    vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
   }
-  tracer.OutputBuffer(myRank);
-  tracer.Finalize();
+  vtkm::filter::flow::GetTracer().Get()->OutputBuffer(myRank);
+  vtkm::filter::flow::GetTracer().Get()->Finalize();
 
   return;
 }

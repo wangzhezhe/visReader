@@ -178,6 +178,27 @@ DomainBlock::Inside(vtkm::FloatDefault *p, int &id) const
 }
 
 DomainBlock *
+DomainBlock::GetInternal()
+{
+  auto root = this->GetRoot();
+  for (auto child : root->children)
+    if (child->leafBlockType == INTERNAL)
+      return child;
+
+  return nullptr;
+}
+
+DomainBlock *
+DomainBlock::GetRoot()
+{
+  DomainBlock* root = this;
+  while (root->parent != nullptr)
+    root = root->parent;
+
+  return root;
+}
+
+DomainBlock *
 DomainBlock::GetLeaf(const vtkm::Vec3f &p)
 {
     std::vector<DomainBlock*> leaves;
@@ -319,7 +340,6 @@ DomainBlock::AddBlockData(DomainBlock *dstBlk, int numICs, int numIters, int tot
 {
     if (dstBlk == NULL)
         return false;
-
     /*
     if (!skipSharedFaceStats)
     {
