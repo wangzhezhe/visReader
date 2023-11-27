@@ -490,3 +490,8 @@ int main(int argc, char **argv)
   MPI_Finalize();
   return 0;
 }
+
+
+//mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecXY >&out
+//mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecX >&out
+//mpirun -np 8 ./StreamlineMPI ./data/clover.visit velocity >&out
