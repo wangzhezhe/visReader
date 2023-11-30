@@ -305,7 +305,7 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
       auto nextLeaf = data.blk;
 
       //If we took the max number of steps, or we terminated (ended up in the same block), we are done.
-      if (maxSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
+      if (numSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
         break;
 
       //continue in the next leaf.
