@@ -330,11 +330,14 @@ int main(int argc, char **argv)
   vtkm::filter::flow::GetTracer().Get()->StartTimer();
   auto MPIComm = vtkmdiy::mpi::mpi_cast(comm.handle());
 
-  vtkm::FloatDefault stepSize = 0.01;
-  vtkm::Id maxSteps = 1000;
-
   std::string visitfileName = argv[1];
   std::string fieldNm = argv[2];
+  vtkm::FloatDefault stepSize = std::atof(argv[3]);
+  vtkm::Id maxSteps = std::atoi(argv[4]);
+  vtkm::Id NUM_TEST_POINTS = std::atoi(argv[5]);
+  vtkm::Id NUM_SIM_POINTS_PER_DOM = std::atoi(argv[6]);
+  vtkm::Id Nxyz = std::atoi(argv[7]);
+
   std::vector<vtkm::cont::DataSet> dataSets;
   std::vector<int> blockIDList;
   AssignStrategy assignStrategy = AssignStrategy::CONTINUOUS;
@@ -348,7 +351,7 @@ int main(int argc, char **argv)
 
   vtkm::filter::flow::internal::BoundsMap boundsMap(dataSets);
   std::vector<DomainBlock *> blockInfo;
-  int NX = 2, NY = 2, NZ = 2;
+  int NX = Nxyz, NY = Nxyz, NZ = Nxyz;
   bool subdivUniform = false;
   DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, 0.10f);
 
@@ -380,7 +383,6 @@ int main(int argc, char **argv)
   std::vector<int> allLeafData(totNumLeafs * NUMVALS, -1);
 
   // generate test points.
-  const int NUM_PTS = 10;
   int totalNumPts = 0;
   for (int i = 0; i < numLocalBlocks; i++)
   {
@@ -397,13 +399,13 @@ int main(int argc, char **argv)
       if (leaf->leafBlockType == DomainBlock::INTERNAL)
       {
         // for internal points, we really want to add the actual seeds.
-        GenerateTestPts(leaf, NUM_PTS, seeds);
-        totalNumPts += NUM_PTS;
+        GenerateTestPts(leaf, NUM_TEST_POINTS, seeds);
+        totalNumPts += NUM_TEST_POINTS;
       }
       else
       {
-        GenerateTestPts(leaf, NUM_PTS, seeds);
-        totalNumPts += NUM_PTS;
+        GenerateTestPts(leaf, NUM_TEST_POINTS, seeds);
+        totalNumPts += NUM_TEST_POINTS;
       }
       std::vector<int> leafData;
       RunTestPts(blockInfo, blockID, leaf, boundsMap, seeds, dataSets[i], fieldNm, leafData, stepSize, maxSteps);
@@ -501,8 +503,7 @@ int main(int argc, char **argv)
 
 
   std::vector<int> blockPopularity(Size, 0);
-  int numPts = 100, numSteps = 1000;
-  CalcuateBlockPopularity(allDomainBlocks, boundsMap, blockPopularity, numPts, numSteps);
+  CalcuateBlockPopularity(allDomainBlocks, boundsMap, blockPopularity, NUM_SIM_POINTS_PER_DOM, maxSteps);
 
   if (Rank == 0)
   {
