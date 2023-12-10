@@ -1,7 +1,6 @@
 #include <iostream>
 #include <chrono>
 #include <sys/time.h>
-#include <omp.h>
 #include <mpi.h>
 #include <random>
 #include <string>

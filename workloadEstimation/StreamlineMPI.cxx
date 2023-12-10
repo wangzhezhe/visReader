@@ -320,11 +320,20 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
 
 int main(int argc, char **argv)
 {
+
+  if(argc!=8){
+    std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <NUM_TEST_POINTS> <NUM_SIM_POINTS_PER_DOM> <Nxyz>" << std::endl;
+    exit(0);
+  }
+
   MPI_Init(&argc, &argv);
   auto comm = vtkm::cont::EnvironmentTracker::GetCommunicator();
   Rank = comm.rank();
   Size = comm.size();
 
+  vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
+      argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
+  
   vtkm::filter::flow::GetTracer().Get()->Init(Rank);
   vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(0);
   vtkm::filter::flow::GetTracer().Get()->StartTimer();
@@ -337,6 +346,15 @@ int main(int argc, char **argv)
   vtkm::Id NUM_TEST_POINTS = std::atoi(argv[5]);
   vtkm::Id NUM_SIM_POINTS_PER_DOM = std::atoi(argv[6]);
   vtkm::Id Nxyz = std::atoi(argv[7]);
+
+  std::cout << "Checking input parameters:" <<  
+  "\n visitfileName: " << visitfileName << 
+  "\n fieldNm: " << fieldNm << 
+  "\n stepSize: " << stepSize << 
+  "\n maxSteps: " << maxSteps << 
+  "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << 
+  "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << 
+  "\n Nxyz: " << Nxyz << std::endl;
 
   std::vector<vtkm::cont::DataSet> dataSets;
   std::vector<int> blockIDList;
