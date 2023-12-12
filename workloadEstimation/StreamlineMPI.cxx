@@ -331,6 +331,13 @@ int main(int argc, char **argv)
   Rank = comm.rank();
   Size = comm.size();
 
+  if (Rank==0){
+    if(argc!=8){
+    std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <NUM_TEST_POINTS> <NUM_SIM_POINTS_PER_DOM> <Nxyz>" << std::endl;
+    exit(0);
+    }
+  }
+
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
   
@@ -347,14 +354,16 @@ int main(int argc, char **argv)
   vtkm::Id NUM_SIM_POINTS_PER_DOM = std::atoi(argv[6]);
   vtkm::Id Nxyz = std::atoi(argv[7]);
 
-  std::cout << "Checking input parameters:" <<  
-  "\n visitfileName: " << visitfileName << 
-  "\n fieldNm: " << fieldNm << 
-  "\n stepSize: " << stepSize << 
-  "\n maxSteps: " << maxSteps << 
-  "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << 
-  "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << 
-  "\n Nxyz: " << Nxyz << std::endl;
+  if (Rank==0){
+    std::cout << "Checking input parameters:" <<  
+    "\n visitfileName: " << visitfileName << 
+    "\n fieldNm: " << fieldNm << 
+    "\n stepSize: " << stepSize << 
+    "\n maxSteps: " << maxSteps << 
+    "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << 
+    "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << 
+    "\n Nxyz: " << Nxyz << std::endl;
+  }
 
   std::vector<vtkm::cont::DataSet> dataSets;
   std::vector<int> blockIDList;
