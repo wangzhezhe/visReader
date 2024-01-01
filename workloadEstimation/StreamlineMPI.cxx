@@ -41,8 +41,7 @@
 int Rank, Size;
 int NUMVALS = -1;
 
-const int PRINT_RANK = 0;
-
+const int PRINT_RANK = 7;
 
 static vtkm::FloatDefault random_1()
 {
@@ -175,28 +174,36 @@ void RunTestPts(std::vector<DomainBlock *> blockInfo,
   auto res = pa.Run(rk4, seedArray, maxSteps);
 
   std::map<int, nextBlock *> nextBlocks;
-
+  // get results information after particle advection
   auto ptsPortal = res.Particles.ReadPortal();
   vtkm::Id totNumSteps = 0, totNumPts = 0;
-
+  // go through each particle
   for (vtkm::Id i = 0; i < ptsPortal.GetNumberOfValues(); i++)
   {
     auto pt = ptsPortal.Get(i);
     auto pt0 = seedsCopy[i];
+    // find the destination of current particle according to particle's position
+    // ignore the current block id
     auto destinations = boundsMap.FindBlocks(pt.GetPosition(), {blkId});
     vtkm::Id dst = -1;
     DomainBlock *dstLeaf = nullptr;
 
     if (destinations.empty())
     {
+      // if the destination is empty, maybe the particle still locate in the same block
+      // get the parent node recursively until the one at the top level
       auto ptr = leaf->parent;
       while (ptr->parent != nullptr)
         ptr = ptr->parent;
+      // the destination is the global id of that parent
+      // the destination leaf is still the same ptr node
       dst = ptr->gid;
       dstLeaf = ptr;
     }
     else
     {
+      // if the destination is not empty, the dst leaf is the leaf
+      // of associated destination block
       dst = destinations[0];
       dstLeaf = blockInfo[dst]->GetLeaf(pt.GetPosition());
     }
@@ -210,33 +217,41 @@ void RunTestPts(std::vector<DomainBlock *> blockInfo,
     }
     else
       n = it->second;
-
+    // update the the next block value
     n->visit(pt.GetNumberOfSteps());
     totNumSteps += pt.GetNumberOfSteps();
     totNumPts++;
 
     if (Rank == PRINT_RANK)
     {
-      if (i == 0) std::cout<<" *** ID, pos0, posn, #steps, id0-->idn, leaf0-->leafn"<<std::endl;
-      std::cout << pt.GetID() << " : " << pt0.GetPosition() << " --> " << pt.GetPosition() << ", " << pt.GetNumberOfSteps();
-      std::cout << " :: (" << blkId << " --> " << dst << ")";
-      std::cout << " (" << leaf->gid <<" ("<<leaf->nm<< ") --> "<<dstLeaf->gid<<" (";
-      if (dstLeaf->gid == -1) std::cout<<"NULL";
-      else std::cout<<dstLeaf->nm;
-      std::cout<<"))"<<std::endl;
+      // id of the particle, start position(seeds position), end position, #of integration steps
+      // block id of start position, block id of end position, id of start leaf, id of end leaf
+      if (i == 0)
+        std::cout << " *** ID, pos0-->posn, #steps, id0-->idn (large block id), leaf0-->leafn (global subdomain leaf id)" << std::endl;
+      std::cout << pt.GetID() << "," << pt0.GetPosition() << "-->" << pt.GetPosition() << "," << pt.GetNumberOfSteps();
+      std::cout << ",(" << blkId << "-->" << dst << ")";
+      std::cout << ",(" << leaf->gid << "(" << leaf->nm << ")-->" << dstLeaf->gid << "(";
+      if (dstLeaf->gid == -1)
+        std::cout << "NULL";
+      else
+        std::cout << dstLeaf->nm;
+      std::cout << "))" << std::endl;
     }
   }
 
   // Put the nextBlocks into an array.
+  // This leafData is empty when calling the RunTestPts function
+  // It stors next blocks information for current subdomain
+  // for the nextBlocks, the key is the global id of block, the value is the nextBlock entity
   int index = 0;
   leafData.resize(nextBlocks.size() * 4, -1);
   for (auto it = nextBlocks.begin(); it != nextBlocks.end(); it++)
   {
     auto n = it->second;
-    leafData[index++] = it->first;
-    leafData[index++] = n->cnt;
-    leafData[index++] = n->numIters;
-    leafData[index++] = totNumPts;
+    leafData[index++] = it->first;   // global id of next one
+    leafData[index++] = n->cnt;      // ? what does it represent, the number of communication between blocks?
+    leafData[index++] = n->numIters; //? where does it represent, the number of steps to this position?
+    leafData[index++] = totNumPts;   // total number of points
 
     delete n;
   }
@@ -267,63 +282,74 @@ CreateUniformDataSet(const vtkm::Bounds &bounds,
   return ds;
 }
 
-void
-CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
-                        const vtkm::filter::flow::internal::BoundsMap& boundsMap,
-                        std::vector<int>& blockPopularity, int numPts, int maxSteps)
+void CalcuateBlockPopularity(std::vector<DomainBlock *> &blockInfo,
+                             const vtkm::filter::flow::internal::BoundsMap &boundsMap,
+                             std::vector<int> &blockPopularity, int numPts, int maxSteps)
 {
   int blockID = Rank;
   auto block = blockInfo[blockID];
 
   std::vector<vtkm::Particle> seeds;
   GenerateTestPts(block, numPts, seeds);
-
-  for (const auto& seed : seeds)
+  int seedId = 0;
+  for (const auto &seed : seeds)
   {
     auto destinations = boundsMap.FindBlocks(seed.GetPosition());
     if (destinations.empty())
       continue;
 
     int dst = destinations[0];
-    DomainBlock* dstLeaf = blockInfo[dst]->GetLeaf(seed.GetPosition());
+    DomainBlock *dstLeaf = blockInfo[dst]->GetLeaf(seed.GetPosition());
 
     vtkm::FloatDefault numSteps = static_cast<vtkm::FloatDefault>(maxSteps);
+    // for each seed, do the particle advection based on prior knowledge
     while (true)
     {
-      //Determine the destination based on a random percentage.
+      // Determine the destination based on a random percentage.
       vtkm::FloatDefault pct = random_1();
-      int idx = dstLeaf->GetDataIdxFromPct(pct);
+
+      //make sure this seed goes to which direaction
+      int idx = dstLeaf->GetDataIdxFromPct(pct,Rank); 
+      // if (Rank == PRINT_RANK && seedId >= 0)
+      // {
+      //   std::cout << "debug pct " << pct << " destidx " << idx << std::endl;
+      // }
       if (idx == -1)
         break;
-      const DomainBlock::blockData& data = dstLeaf->data[idx];
+      const DomainBlock::blockData &data = dstLeaf->data[idx];
 
-      //Take avgIt steps in this block.
+      // Take avgIt steps in this block.
+      // ? What does dom represent, is it domain id?
       blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt + 0.5);
+      // blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt );
       numSteps -= data.avgIt;
 
-      //Next destination.
+      // Next destination.
       auto nextLeaf = data.blk;
 
-      //If we took the max number of steps, or we terminated (ended up in the same block), we are done.
+      // If we took the max number of steps, or we terminated (ended up in the same block), we are done.
       if (numSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
         break;
 
-      //continue in the next leaf.
+      // continue in the next leaf.
       dstLeaf = nextLeaf;
     }
+    seedId++;
   }
 
-  //Calculate the block popularity over all ranks.
+  // Calculate the block popularity over all ranks.
   MPI_Allreduce(MPI_IN_PLACE, blockPopularity.data(), blockPopularity.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-
 }
 
 int main(int argc, char **argv)
 {
-
-  if(argc!=8){
-    std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <NUM_TEST_POINTS> <NUM_SIM_POINTS_PER_DOM> <Nxyz>" << std::endl;
-    exit(0);
+  if (Rank == 0)
+  {
+    if (argc != 9)
+    {
+      std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <NUM_TEST_POINTS> <NUM_SIM_POINTS_PER_DOM> <Nxyz> <pctWidth>" << std::endl;
+      exit(0);
+    }
   }
 
   MPI_Init(&argc, &argv);
@@ -331,16 +357,9 @@ int main(int argc, char **argv)
   Rank = comm.rank();
   Size = comm.size();
 
-  if (Rank==0){
-    if(argc!=8){
-    std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <NUM_TEST_POINTS> <NUM_SIM_POINTS_PER_DOM> <Nxyz>" << std::endl;
-    exit(0);
-    }
-  }
-
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
-  
+
   vtkm::filter::flow::GetTracer().Get()->Init(Rank);
   vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(0);
   vtkm::filter::flow::GetTracer().Get()->StartTimer();
@@ -353,16 +372,12 @@ int main(int argc, char **argv)
   vtkm::Id NUM_TEST_POINTS = std::atoi(argv[5]);
   vtkm::Id NUM_SIM_POINTS_PER_DOM = std::atoi(argv[6]);
   vtkm::Id Nxyz = std::atoi(argv[7]);
-
-  if (Rank==0){
-    std::cout << "Checking input parameters:" <<  
-    "\n visitfileName: " << visitfileName << 
-    "\n fieldNm: " << fieldNm << 
-    "\n stepSize: " << stepSize << 
-    "\n maxSteps: " << maxSteps << 
-    "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << 
-    "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << 
-    "\n Nxyz: " << Nxyz << std::endl;
+  vtkm::FloatDefault pctWidth = std::atof(argv[8]);
+  
+  if (Rank == 0)
+  {
+    std::cout << "Checking input parameters:"
+              << "\n visitfileName: " << visitfileName << "\n fieldNm: " << fieldNm << "\n stepSize: " << stepSize << "\n maxSteps: " << maxSteps << "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << "\n Nxyz: " << Nxyz <<  "\n pctWidth: " << pctWidth << std::endl;
   }
 
   std::vector<vtkm::cont::DataSet> dataSets;
@@ -374,25 +389,31 @@ int main(int argc, char **argv)
   int numLocalBlocks = dataSets.size();
   int totNumBlocks = numLocalBlocks;
   MPI_Allreduce(MPI_IN_PLACE, &totNumBlocks, 1, MPI_INT, MPI_SUM, MPIComm);
-  if (Rank == 0) std::cout<<" Tot numBlocks= "<<totNumBlocks<<std::endl;
-
+  if (Rank == 0)
+    std::cout << " Tot numBlocks= " << totNumBlocks << std::endl;
+  // index the block in distributed way
   vtkm::filter::flow::internal::BoundsMap boundsMap(dataSets);
   std::vector<DomainBlock *> blockInfo;
   int NX = Nxyz, NY = Nxyz, NZ = Nxyz;
   bool subdivUniform = false;
-  DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, 0.10f);
+  DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, pctWidth);
 
   int nVals = 4;      //(dst, numPts, numIters, totalPtsFromSrc)
   int nNeighbors = 7; // 6 neighboring blocks, plus self.
   int nSubdiv = std::max(std::max(NX, NY), NZ);
   if (!subdivUniform)
     nSubdiv++;
+  // Total values for metadata for all subdomains
+  // This value shows how many values are stored for each leaf node
+  // how many points will go to specific neighbor
+  //? What does nSubdiv represent, why it is not ny*nz, for exmpale , there is 1 ny nz for region x
   NUMVALS = nVals * (nNeighbors * nSubdiv);
 
-  //if (Rank == 0) DomainBlock::Dump(blockInfo, std::cout, 0);
-  //MPI_Barrier(MPI_COMM_WORLD);
-
+  // if (Rank == 0) DomainBlock::Dump(blockInfo, std::cout, 0);
+  // MPI_Barrier(MPI_COMM_WORLD);
+  // Go through all subdomains and compute the number of leaves
   int totNumLeafs = DomainBlock::TotalNumLeaves(blockInfo);
+  // The number of leaf for the first block
   int numLeafs = blockInfo[0]->NumLeafs();
   // std::vector<std::vector<int>> blockData(numLeafs);
   // for (auto& bd : blockData)
@@ -406,19 +427,22 @@ int main(int argc, char **argv)
       blockData[i][j] = -1;
   }
   */
-
+  // assign vector that store all metadata for leaves
   std::vector<int> allLeafData(totNumLeafs * NUMVALS, -1);
 
   // generate test points.
   int totalNumPts = 0;
   for (int i = 0; i < numLocalBlocks; i++)
   {
-    //int blockID = boundsMap.GetBlockIdFromLocalIndex(i);
+    // int blockID = boundsMap.GetBlockIdFromLocalIndex(i);
     int blockID = boundsMap.GetLocalBlockId(i);
 
     const auto &ds = dataSets[i];
     auto block = blockInfo[blockID];
 
+    // For the leaf associated with each block
+    // generate seeds, which are NUM_TEST_POINTS
+    // this number of seeds will be placed in each leaf no matter it is bounds or internal
     for (int j = 0; j < numLeafs; j++)
     {
       std::vector<vtkm::Particle> seeds;
@@ -435,13 +459,19 @@ int main(int argc, char **argv)
         totalNumPts += NUM_TEST_POINTS;
       }
       std::vector<int> leafData;
+      // Run the particle advection based on current seeds and blocks
+      // The execution here is serialized way, we go through each leaf region
+      // and run the particle advection within each leaf region
+      //? we put same number of seeds(NUM_TEST_POINTS) into each subdomain
+      //  for each leaf (no matter it is internal or bounudry), we run a particle advection
       RunTestPts(blockInfo, blockID, leaf, boundsMap, seeds, dataSets[i], fieldNm, leafData, stepSize, maxSteps);
 
-      // print out leafData
+      // print out leafData (next block data)
       int sz = leafData.size();
       if (Rank == PRINT_RANK)
       {
-        std::cout << "leafData[" << j << "]= (dstLeaf, #pts, #steps, totPtsFromSrc)" << std::endl;
+        // j represent the id of leaf
+        std::cout << "block id " << blockID << " leafName " << leaf->nm << " leafData[" << j << "]= (dstLeafGlobalId, #pts, #steps, totPtsFromSrc)" << std::endl;
         for (int k = 0; k < sz; k += 4)
         {
           std::cout << "  ";
@@ -455,7 +485,8 @@ int main(int argc, char **argv)
       int idx = blockID * numLeafs * NUMVALS + (j * NUMVALS);
       for (int k = 0; k < sz; k++)
         allLeafData[idx + k] = leafData[k];
-      if (Rank == PRINT_RANK) std::cout << std::endl;
+      if (Rank == PRINT_RANK)
+        std::cout << std::endl;
     }
   }
 
@@ -464,16 +495,16 @@ int main(int argc, char **argv)
     MPI_Allreduce(MPI_IN_PLACE, allLeafData.data(), allLeafData.size(), MPI_INT, MPI_MAX, MPIComm);
   }
 
-  std::vector<DomainBlock*> allDomainBlocks;
+  std::vector<DomainBlock *> allDomainBlocks;
   if (Rank == PRINT_RANK)
-    std::cout<<"******* Printing ALL Leaves *******: tot= "<<totNumLeafs<<std::endl;
+    std::cout << "******* Printing ALL Leaves *******: tot= " << totNumLeafs << std::endl;
   for (int i = 0; i < totNumLeafs; i++)
   {
     auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
     DomainBlock tmp = *leaf;
 
     if (Rank == PRINT_RANK)
-      std::cout << "leafData[" << i << "]("<<leaf->nm<<")= (idx : dstLeaf, #pts, #steps, totPtsFromSrc, dstLeafName)"<<std::endl;
+      std::cout << "leafData[" << i << "](" << leaf->nm << ")= (idx : dstLeaf, #pts, #steps, totPtsFromSrc, dstLeafName)" << std::endl;
     int idx = i * NUMVALS;
     for (int j = 0; j < NUMVALS; j += 4)
     {
@@ -481,16 +512,16 @@ int main(int argc, char **argv)
         break;
 
       auto dstLeaf = DomainBlock::GetBlockFromGID(blockInfo, allLeafData[idx + j + 0]);
-      int dstGID = allLeafData[idx+j+0];
-      int numICs = allLeafData[idx+j+1];
-      int numIters = allLeafData[idx+j+2];
-      int totNumICs = allLeafData[idx+j+3];
+      int dstGID = allLeafData[idx + j + 0];
+      int numICs = allLeafData[idx + j + 1];
+      int numIters = allLeafData[idx + j + 2];
+      int totNumICs = allLeafData[idx + j + 3];
       leaf->AddBlockData(dstLeaf, numICs, numIters, totNumICs);
       if (Rank == PRINT_RANK)
       {
         std::cout << "  ";
         std::cout << (j / 4) << " : ";
-        std::cout<<dstGID<<" "<<numICs<<" "<<numIters<<" "<<totNumICs;
+        std::cout << dstGID << " " << numICs << " " << numIters << " " << totNumICs;
         if (dstLeaf == nullptr)
           std::cout << " INTERNAL ";
         else
@@ -502,16 +533,18 @@ int main(int argc, char **argv)
       leaf->AddBlockData(dstLeaf, numICs, numIters, totNumICs);
     }
     if (Rank == PRINT_RANK)
-      std::cout<<"UNIFIED DATA "<<std::endl;
+      std::cout << "UNIFIED DATA " << std::endl;
+    // compute the percentage here
     leaf->UnifyData();
     if (Rank == PRINT_RANK)
     {
       DomainBlock::Dump(leaf, std::cout, 1);
-      std::cout<<std::endl<<std::endl;
+      std::cout << std::endl
+                << std::endl;
     }
   }
 
-  //Put allLeafData back into blockInfo.
+  // Put allLeafData back into blockInfo.
   for (int i = 0; i < totNumLeafs; i++)
   {
     auto leaf = DomainBlock::GetBlockFromGID(blockInfo, i);
@@ -521,96 +554,100 @@ int main(int argc, char **argv)
 
   if (Rank == PRINT_RANK)
   {
-    std::cout<<std::endl<<std::endl;
-    std::cout<<"********************  blockInfo ********************"<<std::endl;
+    // check output information for all blocks, how much possibility to go to the dest region
+    std::cout << std::endl
+              << std::endl;
+    //? what does last number srepresent here in tht output
+    ////[0:I] [(2:I 0.52 1.93) (2:y 0.25 2.42) (2:x 0.15 2.09) (0:I 0.08 1.34)]
+    std::cout << "********************  blockInfo ********************" << std::endl;
     DomainBlock::Dump(allDomainBlocks, std::cout, 2);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
 
-
+  // compute the block popularity based on the allDomainBlocks information
   std::vector<int> blockPopularity(Size, 0);
   CalcuateBlockPopularity(allDomainBlocks, boundsMap, blockPopularity, NUM_SIM_POINTS_PER_DOM, maxSteps);
 
   if (Rank == 0)
   {
-    std::cout<<std::endl<<std::endl;
-    std::cout<<"BlockPopularity: [";
-    for (auto& p : blockPopularity)
-      std::cout<<p<<" ";
-    std::cout<<"]"<<std::endl;
-    std::cout<<std::endl<<std::endl;
+    std::cout << std::endl
+              << std::endl;
+    std::cout << "BlockPopularity: [";
+    for (auto &p : blockPopularity)
+      std::cout << p << " ";
+    std::cout << "]" << std::endl;
+    std::cout << std::endl
+              << std::endl;
 
-    //normalize..
+    // normalize..
     int sum = std::accumulate(blockPopularity.begin(), blockPopularity.end(), 0);
     std::vector<float> blockPopNorm;
-    for (const auto& v : blockPopularity) blockPopNorm.push_back((float)(v)/sum);
-    std::cout<<"NormBlockPopularity: [";
-    for (auto& p : blockPopNorm)
-      std::cout<<p<<" ";
-    std::cout<<"]"<<std::endl;
-
+    for (const auto &v : blockPopularity)
+      blockPopNorm.push_back((float)(v) / sum);
+    std::cout << "NormBlockPopularity: [";
+    for (auto &p : blockPopNorm)
+      std::cout << p << " ";
+    std::cout << "]" << std::endl;
   }
 
-/*
-  if (Rank == PRINT_RANK)
-  {
-
-    std::cout<<"************** WALK PARTICLES ******************"<<std::endl;
-    vtkm::Vec3f pt(0.122048,0.835823,1.01106);
-    pt = vtkm::Vec3f(1.71681,1.01744,1.54469);
-
-    auto destinations = boundsMap.FindBlocks(pt);
-    vtkm::Id dst = destinations[0];
-    vtkm::FloatDefault maxSteps = 1000;
-
-    DomainBlock* dstLeaf = allDomainBlocks[dst]->GetLeaf(pt);
-    std::cout<<"PT= "<<pt<<" :: "<<dstLeaf->nm<<std::endl;
-
-    std::vector<int> blockPopularity(Size, 0);
-    int cnt = 0;
-    while (true)
+  /*
+    if (Rank == PRINT_RANK)
     {
-      vtkm::FloatDefault pct = random_1();
-      int idx = dstLeaf->GetDataIdxFromPct(pct);
-      if (idx == -1)
-        break;
 
-      std::cout<<" DstLeaves:  ";
-      DomainBlock::Dump(dstLeaf, std::cout, 10); std::cout<<std::endl;
-      std::cout<<"  Pct= "<<pct<<" idx= "<<idx<<std::endl;
-      const DomainBlock::blockData& data = dstLeaf->data[idx];
-      std::cout<<"    Take steps: "<<data.avgIt<<" --> "<<data.blk->nm<<std::endl;
+      std::cout<<"************** WALK PARTICLES ******************"<<std::endl;
+      vtkm::Vec3f pt(0.122048,0.835823,1.01106);
+      pt = vtkm::Vec3f(1.71681,1.01744,1.54469);
 
-      blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt + 0.5);
-      maxSteps -= data.avgIt;
-      //DomainBlock::Dump(dstLeaf, std::cout, 10); std::cout<<std::endl;
-      auto nextLeaf = data.blk;
+      auto destinations = boundsMap.FindBlocks(pt);
+      vtkm::Id dst = destinations[0];
+      vtkm::FloatDefault maxSteps = 1000;
+
+      DomainBlock* dstLeaf = allDomainBlocks[dst]->GetLeaf(pt);
+      std::cout<<"PT= "<<pt<<" :: "<<dstLeaf->nm<<std::endl;
+
+      std::vector<int> blockPopularity(Size, 0);
+      int cnt = 0;
+      while (true)
+      {
+        vtkm::FloatDefault pct = random_1();
+        int idx = dstLeaf->GetDataIdxFromPct(pct);
+        if (idx == -1)
+          break;
+
+        std::cout<<" DstLeaves:  ";
+        DomainBlock::Dump(dstLeaf, std::cout, 10); std::cout<<std::endl;
+        std::cout<<"  Pct= "<<pct<<" idx= "<<idx<<std::endl;
+        const DomainBlock::blockData& data = dstLeaf->data[idx];
+        std::cout<<"    Take steps: "<<data.avgIt<<" --> "<<data.blk->nm<<std::endl;
+
+        blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt + 0.5);
+        maxSteps -= data.avgIt;
+        //DomainBlock::Dump(dstLeaf, std::cout, 10); std::cout<<std::endl;
+        auto nextLeaf = data.blk;
 
 
-      //std::cout<<pct<<" ;; "<<cnt<<": "<<dstLeaf->nm<<" "<<data.avgIt<<" ms: "<<maxSteps<<" --> "<<nextLeaf->nm<<" "<<nextLeaf->dom<<" "<<nextLeaf->gid<<std::endl;
+        //std::cout<<pct<<" ;; "<<cnt<<": "<<dstLeaf->nm<<" "<<data.avgIt<<" ms: "<<maxSteps<<" --> "<<nextLeaf->nm<<" "<<nextLeaf->dom<<" "<<nextLeaf->gid<<std::endl;
 
-      if (maxSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
-        break;
-      cnt++;
-      dstLeaf = nextLeaf;
-      std::cout<<"******************************************"<<std::endl<<std::endl;
+        if (maxSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
+          break;
+        cnt++;
+        dstLeaf = nextLeaf;
+        std::cout<<"******************************************"<<std::endl<<std::endl;
+      }
+
+      std::cout<<std::endl;
+      std::cout<<"BlockPopularity: [";
+      for (auto& p : blockPopularity)
+        std::cout<<p<<" ";
+      std::cout<<"]"<<std::endl;
     }
-
-    std::cout<<std::endl;
-    std::cout<<"BlockPopularity: [";
-    for (auto& p : blockPopularity)
-      std::cout<<p<<" ";
-    std::cout<<"]"<<std::endl;
-  }
-*/
-
+  */
 
   MPI_Finalize();
-  return(0);
+  return (0);
 }
 
-
-//mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecXY >&out
-//mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecX >&out
-//mpirun -np 8 ./StreamlineMPI ./data/clover.visit velocity >&out
+// mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecXY >&out
+// mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecX >&out
+// mpirun -np 8 ./StreamlineMPI ./data/clover.visit velocity >&out
