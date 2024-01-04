@@ -43,6 +43,20 @@ int NUMVALS = -1;
 
 const int PRINT_RANK = 0;
 
+template <typename T>
+std::ostream& operator<< (std::ostream& out, const std::vector<T>& v)
+{
+  out<<"[";
+  for (int i = 0; i < v.size(); i++)
+  {
+    out<<v[i];
+    if (i < v.size()-1) out<<",";
+  }
+  out<<"]";
+
+  return out;
+}
+
 
 static vtkm::FloatDefault random_1()
 {
@@ -270,7 +284,11 @@ CreateUniformDataSet(const vtkm::Bounds &bounds,
 void
 CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
                         const vtkm::filter::flow::internal::BoundsMap& boundsMap,
-                        std::vector<int>& blockPopularity, int numPts, int maxSteps)
+                        std::vector<int>& blockPopularity,
+                        std::vector<int>& particlesIn,
+                        std::vector<int>& particlesOut,
+                        std::vector<int>& cycleCnt,
+                        int numPts, int maxSteps)
 {
   int blockID = Rank;
   auto block = blockInfo[blockID];
@@ -278,6 +296,7 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
   std::vector<vtkm::Particle> seeds;
   GenerateTestPts(block, numPts, seeds);
 
+  int seedCnt = 0;
   for (const auto& seed : seeds)
   {
     auto destinations = boundsMap.FindBlocks(seed.GetPosition());
@@ -288,8 +307,13 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
     DomainBlock* dstLeaf = blockInfo[dst]->GetLeaf(seed.GetPosition());
 
     vtkm::FloatDefault numSteps = static_cast<vtkm::FloatDefault>(maxSteps);
+
+    const int winSZ = 2;
+    std::vector<int> window(winSZ, -1);
+    std::vector<int> domPath;
     while (true)
     {
+      domPath.push_back(dstLeaf->dom);
       //Determine the destination based on a random percentage.
       vtkm::FloatDefault pct = random_1();
       int idx = dstLeaf->GetDataIdxFromPct(pct);
@@ -300,6 +324,7 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
       //Take avgIt steps in this block.
       blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt + 0.5);
       numSteps -= data.avgIt;
+      particlesOut[dstLeaf->dom]++;
 
       //Next destination.
       auto nextLeaf = data.blk;
@@ -309,13 +334,20 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
         break;
 
       //continue in the next leaf.
+      particlesIn[nextLeaf->dom]++;
       dstLeaf = nextLeaf;
     }
+
+//    if (Rank == 0 && seedCnt == 0)
+//      std::cout<<"DOMPath: "<<domPath<<std::endl;
+
+    seedCnt++;
   }
 
   //Calculate the block popularity over all ranks.
   MPI_Allreduce(MPI_IN_PLACE, blockPopularity.data(), blockPopularity.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-
+  MPI_Allreduce(MPI_IN_PLACE, particlesIn.data(), particlesIn.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, particlesOut.data(), particlesOut.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 }
 
 int main(int argc, char **argv)
@@ -340,7 +372,7 @@ int main(int argc, char **argv)
 
   vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
       argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
-  
+
   vtkm::filter::flow::GetTracer().Get()->Init(Rank);
   vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(0);
   vtkm::filter::flow::GetTracer().Get()->StartTimer();
@@ -355,13 +387,13 @@ int main(int argc, char **argv)
   vtkm::Id Nxyz = std::atoi(argv[7]);
 
   if (Rank==0){
-    std::cout << "Checking input parameters:" <<  
-    "\n visitfileName: " << visitfileName << 
-    "\n fieldNm: " << fieldNm << 
-    "\n stepSize: " << stepSize << 
-    "\n maxSteps: " << maxSteps << 
-    "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS << 
-    "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM << 
+    std::cout << "Checking input parameters:" <<
+    "\n visitfileName: " << visitfileName <<
+    "\n fieldNm: " << fieldNm <<
+    "\n stepSize: " << stepSize <<
+    "\n maxSteps: " << maxSteps <<
+    "\n NUM_TEST_POINTS: " << NUM_TEST_POINTS <<
+    "\n NUM_SIM_POINTS_PER_DOM: " << NUM_SIM_POINTS_PER_DOM <<
     "\n Nxyz: " << Nxyz << std::endl;
   }
 
@@ -529,27 +561,24 @@ int main(int argc, char **argv)
   MPI_Barrier(MPI_COMM_WORLD);
 
 
-  std::vector<int> blockPopularity(Size, 0);
-  CalcuateBlockPopularity(allDomainBlocks, boundsMap, blockPopularity, NUM_SIM_POINTS_PER_DOM, maxSteps);
+  std::vector<int> blockPopularity(Size, 0), particlesIn(Size, 0), particlesOut(Size, 0), cycleCnt(Size, 0);
+  CalcuateBlockPopularity(allDomainBlocks, boundsMap,
+                          blockPopularity, particlesIn, particlesOut, cycleCnt,
+                          NUM_SIM_POINTS_PER_DOM, maxSteps);
 
   if (Rank == 0)
   {
     std::cout<<std::endl<<std::endl;
-    std::cout<<"BlockPopularity: [";
-    for (auto& p : blockPopularity)
-      std::cout<<p<<" ";
-    std::cout<<"]"<<std::endl;
-    std::cout<<std::endl<<std::endl;
+    std::cout<<"BlockPopularity: "<<blockPopularity<<std::endl;
 
     //normalize..
     int sum = std::accumulate(blockPopularity.begin(), blockPopularity.end(), 0);
     std::vector<float> blockPopNorm;
     for (const auto& v : blockPopularity) blockPopNorm.push_back((float)(v)/sum);
-    std::cout<<"NormBlockPopularity: [";
-    for (auto& p : blockPopNorm)
-      std::cout<<p<<" ";
-    std::cout<<"]"<<std::endl;
+    std::cout<<"NormBlockPopularity: "<<blockPopNorm<<std::endl;
 
+    std::cout<<"ParticlesIn: "<<particlesIn<<std::endl;
+    std::cout<<"ParticlesOut: "<<particlesOut<<std::endl;
   }
 
 /*
