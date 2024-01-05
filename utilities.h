@@ -37,7 +37,7 @@ inline void writeDataSet(const vtkm::cont::PartitionedDataSet &pds, std::string 
     for (int i = 0; i < numDomains; i++)
     {
         char fileNm[128];
-        sprintf(fileNm, "%s.step%d.rank%d.domain%d.vtk", fName.c_str(), step, rank, i);
+        snprintf(fileNm, 128, "%s.step%d.rank%d.domain%d.vtk", fName.c_str(), step, rank, i);
         vtkm::io::VTKDataSetWriter write(fileNm);
         write.WriteDataSet(pds.GetPartition(i));
     }

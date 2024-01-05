@@ -19,12 +19,12 @@ DomainBlock::DomainBlock()
 
 DomainBlock::DomainBlock(int d, vtkm::FloatDefault *b, std::string n)
 {
-    gid = -1;
-    dom = d;
+    gid = -1; 
+    dom = d; // id of the domain
     sub = 0;
     parent = NULL;
     skipSharedFaceStats = false;
-    setBBox(b);
+    setBBox(b); // record the domain info the current block
     setNm(n);
     leafBlockType = NONE;
 }
@@ -56,7 +56,7 @@ DomainBlock::setNm(const std::string &n)
     if (n.empty() && dom >= 0)
     {
         char t[32];
-        sprintf(t,"%d", dom);
+        snprintf(t, 32 ,"%d", dom);
         nm = t;
     }
     else
@@ -67,9 +67,10 @@ DomainBlock *
 DomainBlock::AddChild(vtkm::FloatDefault *bb, const char *n)
 {
     char t[32];
-    sprintf(t, "%s:%s", nm.c_str(), n);
+    snprintf(t, 32, "%s:%s", nm.c_str(), n);
     DomainBlock *blk = new DomainBlock(dom, bb, t);
     blk->parent = this;
+    //add new blk into the children list attached with current node
     children.push_back(blk);
     return blk;
 }
@@ -110,10 +111,12 @@ DomainBlock::GetExtents(vtkm::Vec3f &ext)
 int
 DomainBlock::NumLeafs() const
 {
+    //the current one is leaf
     if (children.empty())
         return 1;
 
     int n = 0;
+    //return number of leafs that the current one can hold
     for (std::size_t i = 0; i < children.size(); i++)
         n += children[i]->NumLeafs();
     return n;
@@ -237,7 +240,8 @@ DomainBlock::dumpBBox(std::ostream& s) const
     s<<"("<<bbox[2]<<","<<bbox[3]<<") ";
     s<<"("<<bbox[4]<<","<<bbox[5]<<")} ";
 }
-
+//? what does the lvl and rawNums represent here??? level? 
+//only output first two level?
 void
 DomainBlock::dump(std::ostream &s, int lvl, bool rawNums, std::string indent) const
 {
@@ -468,10 +472,13 @@ DomainBlock::DoSubdivideUniform(int nx, int ny, int nz)
                 b[4] = bbox[4] + k*dz;
                 b[5] = b[4] + dz;
 
-                sprintf(n, "%ld%ld%ld", i,j,k);
+                snprintf(n, 64, "%ld%ld%ld", i,j,k);
+                //Create a new data block meta info
+                //add this meta info to the list of children within current datadomain 
                 DomainBlock *blk = AddChild(b, n);
 
                 //Propagate the block type to the children.
+                //the block type of children is same with parent?
                 blk->leafBlockType = leafBlockType;
             }
 }
@@ -483,7 +490,9 @@ DomainBlock::DoSubdivideFaces(int nx, int ny, int nz, vtkm::FloatDefault pct)
     vtkm::FloatDefault py = pct*(bbox[3]-bbox[2]);
     vtkm::FloatDefault pz = pct*(bbox[5]-bbox[4]);
     DomainBlock *blk;
-
+    // There are five type of subdomain, internal, x, X, y, Y, z, Z
+    // In the bounudry region, we then use the nx ny nz to continue divide them into nx*ny*nz small blocks
+    // The internal region does not need to do the subdivision
     //Make the interior.
     vtkm::FloatDefault b[6] = {bbox[0]+px, bbox[1]-px,
                   bbox[2]+py, bbox[3]-py,
@@ -603,13 +612,13 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
                              bool _skipSharedFaceStats)
 {
     double bbox[6];
-
     v.resize(nDom);
 
     int totLeafs = 0;
     for (int i = 0; i < nDom; i++)
     {
       //this api is removed?
+      //get spatial bounds for each domain
       auto bounds = it.GetBlockBounds(i);
       bbox[0] = bounds.X.Min;
       bbox[1] = bounds.X.Max;
@@ -619,14 +628,22 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
       bbox[5] = bounds.Z.Max;
 
       //it->GetElementExtents(i, bbox);
+      //init a struct for new data domain
+      //ser the id and bbx for the current domain
       v[i] = new DomainBlock(i,bbox);
       v[i]->skipSharedFaceStats = _skipSharedFaceStats;
       if (subdivUniform)
-        v[i]->SubdivideUniform(nX, nY, nZ);
+        // when need to sub divide the uniform
+        // subdivide curernt domain in distributed way 
+        // nX, nY nZ represents number of subdomains in each dim
+        // this condition is actually set as false in StreamlinMPI
+        v[i]->SubdivideUniform(nX, nY, nZ); 
       else
-        v[i]->SubdivideFaces(nX, nY, nZ, pct);
+        // this will subdivide the domain into the internal region and the bounudary region
+        // pct represents the ratio of the border width to the entire width
+        v[i]->SubdivideFaces(nX, nY, nZ, pct); 
 
-      totLeafs += v[i]->NumLeafs();
+      totLeafs += v[i]->NumLeafs(); // compute how many leaf for the current block
     }
 
     //Set the GIDs, and the name map.
@@ -635,13 +652,21 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
     for (std::size_t i = 0; i < v.size(); i++)
     {
         std::vector<DomainBlock*> leaves;
+        //this is a recursive call
+        //all leafs of current nodes are stored into the vector
         v[i]->GetLeaves(leaves);
         v[i]->skipSharedFaceStats = _skipSharedFaceStats;
         for (std::size_t j = 0; j < leaves.size(); j++)
         {
+            //this is the global id including all leafes
+            //assign global id to each leaf
             leaves[j]->gid = id;
             leaves[j]->skipSharedFaceStats = _skipSharedFaceStats;
             id++;
+            //map leaf id to its name
+            //map leaf id to its meatdata
+            //during the process of dividing faces
+            //the name of the leaf can be I x X y Y z Z etc
             nameMap[leaves[j]->gid] = leaves[j]->nm;
             leafMap[leaves[j]->gid] = leaves[j];
         }
