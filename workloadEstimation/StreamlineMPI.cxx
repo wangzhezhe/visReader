@@ -57,6 +57,27 @@ std::ostream& operator<< (std::ostream& out, const std::vector<T>& v)
   return out;
 }
 
+template <typename T, typename U>
+std::ostream& operator<< (std::ostream& out, const std::map<T,U>& m)
+{
+  out<<"{";
+  for (auto it = m.begin(); it != m.end(); it++)
+    out<<"("<<it->first<<" : "<<it->second<<"), ";
+  out<<"}";
+
+  return out;
+}
+
+template <typename T>
+std::ostream& operator<< (std::ostream& out, const std::set<T>& s)
+{
+  out<<"(";
+  for (const auto& v : s) out<<v<<", ";
+  out<<")";
+
+  return out;
+}
+
 
 static vtkm::FloatDefault random_1()
 {
@@ -281,6 +302,58 @@ CreateUniformDataSet(const vtkm::Bounds &bounds,
   return ds;
 }
 
+std::map<int, std::vector<int>>
+DetectCycles(const std::vector<int>& blockPath, int len,
+             std::vector<int>& blockCycles)
+{
+  std::map<int, std::vector<int>> ret;
+
+  int N = blockPath.size();
+
+  //Create a sequence of ints of length len
+  std::map<int, std::vector<int>> sequences;
+  for (int i = 0; i < N-len+1; i++)
+  {
+    std::vector<int> seq;
+    for (int j = 0; j < len; j++)
+      seq.push_back(blockPath[i+j]);
+    sequences[i] = seq;
+  }
+
+  //Put them in a set to remove duplicates.
+  std::set<std::vector<int>> candidates;
+  for (auto it = sequences.begin(); it != sequences.end(); it++)
+    candidates.insert(it->second);
+
+  //std::cout<<"Sequences : "<<sequences<<std::endl;
+  //std::cout<<"Candidates: "<<candidates<<std::endl;
+
+  // Duplicates if the sizes are different.
+  if (sequences.size() > candidates.size())
+  {
+    std::map<std::vector<int>, int> counter;
+    for (auto it = sequences.begin(); it != sequences.end(); it++)
+    {
+      int n = 1;
+      if (counter.find(it->second) != counter.end())
+        n = counter[it->second] + 1;
+      counter[it->second] = n;
+    }
+
+    //std::cout<<"Cycles: "<<counter<<std::endl;
+
+    //update the cycles data.
+    for (auto it = counter.begin(); it != counter.end(); it++)
+    {
+      int val = it->second;
+      for (int j = 0; j < it->first.size(); j++)
+        blockCycles[it->first[j]] += val;
+    }
+  }
+
+  return ret;
+}
+
 void
 CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
                         const vtkm::filter::flow::internal::BoundsMap& boundsMap,
@@ -338,16 +411,22 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
       dstLeaf = nextLeaf;
     }
 
-//    if (Rank == 0 && seedCnt == 0)
-//      std::cout<<"DOMPath: "<<domPath<<std::endl;
+    //if (Rank == 0 && seedCnt == 0)
+    {
+      //std::cout<<"DOMPath: "<<domPath<<std::endl;
+      DetectCycles(domPath, 2, cycleCnt);
+      //std::cout<<"Cycles: "<<cycleCnt<<std::endl;
+    }
 
     seedCnt++;
   }
+
 
   //Calculate the block popularity over all ranks.
   MPI_Allreduce(MPI_IN_PLACE, blockPopularity.data(), blockPopularity.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, particlesIn.data(), particlesIn.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE, particlesOut.data(), particlesOut.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, cycleCnt.data(), cycleCnt.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 }
 
 int main(int argc, char **argv)
@@ -577,8 +656,9 @@ int main(int argc, char **argv)
     for (const auto& v : blockPopularity) blockPopNorm.push_back((float)(v)/sum);
     std::cout<<"NormBlockPopularity: "<<blockPopNorm<<std::endl;
 
-    std::cout<<"ParticlesIn: "<<particlesIn<<std::endl;
+    std::cout<<"ParticlesIn:  "<<particlesIn<<std::endl;
     std::cout<<"ParticlesOut: "<<particlesOut<<std::endl;
+    std::cout<<"CycleCnt:     "<<cycleCnt<<std::endl;
   }
 
 /*
