@@ -59,26 +59,26 @@ std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
 }
 
 template <typename T, typename U>
-std::ostream& operator<< (std::ostream& out, const std::map<T,U>& m)
+std::ostream &operator<<(std::ostream &out, const std::map<T, U> &m)
 {
-  out<<"{";
+  out << "{";
   for (auto it = m.begin(); it != m.end(); it++)
-    out<<"("<<it->first<<" : "<<it->second<<"), ";
-  out<<"}";
+    out << "(" << it->first << " : " << it->second << "), ";
+  out << "}";
 
   return out;
 }
 
 template <typename T>
-std::ostream& operator<< (std::ostream& out, const std::set<T>& s)
+std::ostream &operator<<(std::ostream &out, const std::set<T> &s)
 {
-  out<<"(";
-  for (const auto& v : s) out<<v<<", ";
-  out<<")";
+  out << "(";
+  for (const auto &v : s)
+    out << v << ", ";
+  out << ")";
 
   return out;
 }
-
 
 static vtkm::FloatDefault random_1()
 {
@@ -325,30 +325,30 @@ CreateUniformDataSet(const vtkm::Bounds &bounds,
 }
 
 std::map<int, std::vector<int>>
-DetectCycles(const std::vector<int>& blockPath, int len,
-             std::vector<int>& blockCycles)
+DetectCycles(const std::vector<int> &blockPath, int len,
+             std::vector<int> &blockCycles)
 {
   std::map<int, std::vector<int>> ret;
 
   int N = blockPath.size();
 
-  //Create a sequence of ints of length len
+  // Create a sequence of ints of length len
   std::map<int, std::vector<int>> sequences;
-  for (int i = 0; i < N-len+1; i++)
+  for (int i = 0; i < N - len + 1; i++)
   {
     std::vector<int> seq;
     for (int j = 0; j < len; j++)
-      seq.push_back(blockPath[i+j]);
+      seq.push_back(blockPath[i + j]);
     sequences[i] = seq;
   }
 
-  //Put them in a set to remove duplicates.
+  // Put them in a set to remove duplicates.
   std::set<std::vector<int>> candidates;
   for (auto it = sequences.begin(); it != sequences.end(); it++)
     candidates.insert(it->second);
 
-  //std::cout<<"Sequences : "<<sequences<<std::endl;
-  //std::cout<<"Candidates: "<<candidates<<std::endl;
+  // std::cout<<"Sequences : "<<sequences<<std::endl;
+  // std::cout<<"Candidates: "<<candidates<<std::endl;
 
   // Duplicates if the sizes are different.
   if (sequences.size() > candidates.size())
@@ -362,9 +362,9 @@ DetectCycles(const std::vector<int>& blockPath, int len,
       counter[it->second] = n;
     }
 
-    //std::cout<<"Cycles: "<<counter<<std::endl;
+    // std::cout<<"Cycles: "<<counter<<std::endl;
 
-    //update the cycles data.
+    // update the cycles data.
     for (auto it = counter.begin(); it != counter.end(); it++)
     {
       int val = it->second;
@@ -376,14 +376,13 @@ DetectCycles(const std::vector<int>& blockPath, int len,
   return ret;
 }
 
-void
-CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
-                        const vtkm::filter::flow::internal::BoundsMap& boundsMap,
-                        std::vector<int>& blockPopularity,
-                        std::vector<int>& particlesIn,
-                        std::vector<int>& particlesOut,
-                        std::vector<int>& cycleCnt,
-                        int numPts, int maxSteps)
+void CalcuateBlockPopularity(std::vector<DomainBlock *> &blockInfo,
+                             const vtkm::filter::flow::internal::BoundsMap &boundsMap,
+                             std::vector<int> &blockPopularity,
+                             std::vector<int> &particlesIn,
+                             std::vector<int> &particlesOut,
+                             std::vector<int> &cycleCnt,
+                             int numPts, int maxSteps)
 {
   int blockID = Rank;
   auto block = blockInfo[blockID];
@@ -441,11 +440,11 @@ CalcuateBlockPopularity(std::vector<DomainBlock *>& blockInfo,
       dstLeaf = nextLeaf;
     }
 
-    //if (Rank == 0 && seedCnt == 0)
+    // if (Rank == 0 && seedCnt == 0)
     {
-      //std::cout<<"DOMPath: "<<domPath<<std::endl;
+      // std::cout<<"DOMPath: "<<domPath<<std::endl;
       DetectCycles(domPath, 2, cycleCnt);
-      //std::cout<<"Cycles: "<<cycleCnt<<std::endl;
+      // std::cout<<"Cycles: "<<cycleCnt<<std::endl;
     }
     seedCnt++;
   }
@@ -522,22 +521,34 @@ int main(int argc, char **argv)
 
   int nVals = 4;      //(dst, numPts, numIters, totalPtsFromSrc)
   int nNeighbors = 7; // 6 neighboring blocks, plus self.
-  //all possible destinations
+  // all possible destinations
   int nSubdiv = std::max(std::max(NX, NY), NZ);
   // square the value since for each boundary region, we divide it through two dimentions
-  // this only works when NX==NY==NZ
-  nSubdiv=nSubdiv*nSubdiv;
-  if (!subdivUniform){
-    //there is no subdivided block for the internal region
-    nSubdiv++;
+  // for each slab such as x, it is divided into ny*nz small blocks, for each small block
+  // there are 7 adjacent neighbors(including itsself)
+  // we accume ny=nx=nz here
+  nSubdiv = nSubdiv * nSubdiv;
+
+  int numSmallBlocksPerBlock = 6 * nSubdiv;
+
+  if (!subdivUniform)
+  {
+    // there is 1 sub block for internal region
+    numSmallBlocksPerBlock++;
+  }
+  else
+  {
+    numSmallBlocksPerBlock += nSubdiv;
   }
 
-  if (Rank==0){
-    std::cout << "Checking nSubdiv: " << nSubdiv << std::endl;
+  // nSubdiv represents small blocks in each large block
+  if (Rank == 0)
+  {
+    std::cout << "Checking numSmallBlocksPerBlock: " << numSmallBlocksPerBlock << std::endl;
   }
   // Total values for metadata for all subdomains
   // This value shows how many values are stored for each leaf node
-  NUMVALS = nVals * (nNeighbors * nSubdiv);
+  NUMVALS = nVals * totNumBlocks * numSmallBlocksPerBlock;
 
   // if (Rank == 0) DomainBlock::Dump(blockInfo, std::cout, 0);
   // MPI_Barrier(MPI_COMM_WORLD);
@@ -581,14 +592,15 @@ int main(int argc, char **argv)
       {
         // for internal points, we really want to add the actual seeds.
         // make the seeds number in interal region match with it region
-        vtkm::Id scale = (1.0 - 2 * pctWidth) / pctWidth;
+        // we use the smallest region as the unit the complete equattion is (1-2p)^3/[(1-2p)^2*p/Nxyz]
+        vtkm::Id scale = Nxyz*((1.0 - 2.0 * pctWidth) / pctWidth);
         scale = vtkm::Max(1.0, scale);
         vtkm::Id NumPtsInternal = scale * NUM_TEST_POINTS;
         GenerateTestPts(leaf, NumPtsInternal, seeds);
         totalNumPts += NumPtsInternal;
         if (Rank == 0)
         {
-          std::cout << "Checking seeds, internal block: " << NumPtsInternal << std::endl;
+          std::cout << "Checking seeds, scale is "<< scale << " #internal block seeds: " << NumPtsInternal << std::endl;
         }
       }
       else
@@ -597,7 +609,7 @@ int main(int argc, char **argv)
         totalNumPts += NUM_TEST_POINTS;
         if (Rank == 0)
         {
-          std::cout << "Checking seeds, leaf block: " << leaf->nm << std::endl;
+          std::cout << "Checking seeds, leaf block: " << leaf->nm << " #seeds " << NUM_TEST_POINTS << std::endl;
         }
       }
       std::vector<int> leafData;
@@ -723,9 +735,9 @@ int main(int argc, char **argv)
       blockPopNorm.push_back((float)(v) / sum);
     std::cout << "NormBlockPopularity: " << blockPopNorm << std::endl;
 
-    std::cout<<"ParticlesIn:  "<<particlesIn<<std::endl;
-    std::cout<<"ParticlesOut: "<<particlesOut<<std::endl;
-    std::cout<<"CycleCnt:     "<<cycleCnt<<std::endl;
+    std::cout << "ParticlesIn:  " << particlesIn << std::endl;
+    std::cout << "ParticlesOut: " << particlesOut << std::endl;
+    std::cout << "CycleCnt:     " << cycleCnt << std::endl;
   }
 
   /*
