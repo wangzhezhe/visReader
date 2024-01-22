@@ -479,6 +479,8 @@ int main(int argc, char **argv)
   vtkm::filter::flow::GetTracer().Get()->Init(Rank);
   vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(0);
   vtkm::filter::flow::GetTracer().Get()->StartTimer();
+  vtkm::cont::Timer timer;
+  
   auto MPIComm = vtkmdiy::mpi::mpi_cast(comm.handle());
 
   std::string visitfileName = argv[1];
@@ -507,7 +509,8 @@ int main(int argc, char **argv)
   AssignStrategy assignStrategy = AssignStrategy::CONTINUOUS;
 
   LoadData(visitfileName, assignStrategy, "", dataSets, blockIDList, Rank, Size);
-
+  
+  timer.Start();
   int numLocalBlocks = dataSets.size();
   int totNumBlocks = numLocalBlocks;
   MPI_Allreduce(MPI_IN_PLACE, &totNumBlocks, 1, MPI_INT, MPI_SUM, MPIComm);
@@ -795,6 +798,11 @@ int main(int argc, char **argv)
   */
 
   MPI_Finalize();
+  timer.Stop();
+  double executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time (exclude data loading) is: " << executionTime << std::endl;
+  }
   return (0);
 }
 
