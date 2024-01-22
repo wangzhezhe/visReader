@@ -39,9 +39,10 @@
 #include "../AssignStrategy.hpp"
 
 int Rank, Size;
-int NUMVALS = -1;
+//using long int to prevent the `larger than max_size()` error for some configurations
+long int NUMVALS = -1;
 
-const int PRINT_RANK = 0;
+const int PRINT_RANK = -1;
 
 template <typename T>
 std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
@@ -598,7 +599,7 @@ int main(int argc, char **argv)
         vtkm::Id NumPtsInternal = scale * NUM_TEST_POINTS;
         GenerateTestPts(leaf, NumPtsInternal, seeds);
         totalNumPts += NumPtsInternal;
-        if (Rank == 0)
+        if (Rank == PRINT_RANK)
         {
           std::cout << "Checking seeds, scale is "<< scale << " #internal block seeds: " << NumPtsInternal << std::endl;
         }
@@ -607,7 +608,7 @@ int main(int argc, char **argv)
       {
         GenerateTestPts(leaf, NUM_TEST_POINTS, seeds);
         totalNumPts += NUM_TEST_POINTS;
-        if (Rank == 0)
+        if (Rank == PRINT_RANK)
         {
           std::cout << "Checking seeds, leaf block: " << leaf->nm << " #seeds " << NUM_TEST_POINTS << std::endl;
         }
