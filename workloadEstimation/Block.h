@@ -32,10 +32,10 @@ public:
   static void CreateBlockInfo(std::vector<DomainBlock *> &v, int nDom, vtkm::filter::flow::internal::BoundsMap &it,
                               bool subdivUniform, int nX, int nY, int nZ, double pct,
                               bool skipSharedFaceStats = true);
-  static int TotalNumLeaves(std::vector<DomainBlock *> &v);
+  static int TotalNumLeaves(const std::vector<DomainBlock *> &v);
   static void Dump(DomainBlock *b, std::ostream &s, int lvl, bool rawNums = false);
   static void Dump(std::vector<DomainBlock *> &v, std::ostream &s, int lvl, bool rawNums = false);
-  static DomainBlock *GetBlockFromGID(std::vector<DomainBlock *> &v, int gid);
+  static DomainBlock *GetBlockFromGID(const std::vector<DomainBlock *> &v, int gid);
   static DomainBlock *GetLeaf_FIX_THIS(std::vector<DomainBlock *> &v, const vtkm::Vec3f &p);
 
   DomainBlock();

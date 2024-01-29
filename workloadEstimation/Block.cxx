@@ -19,7 +19,7 @@ DomainBlock::DomainBlock()
 
 DomainBlock::DomainBlock(int d, vtkm::FloatDefault *b, std::string n)
 {
-    gid = -1; 
+    gid = -1;
     dom = d; // id of the domain
     sub = 0;
     parent = NULL;
@@ -240,7 +240,7 @@ DomainBlock::dumpBBox(std::ostream& s) const
     s<<"("<<bbox[2]<<","<<bbox[3]<<") ";
     s<<"("<<bbox[4]<<","<<bbox[5]<<")} ";
 }
-//? what does the lvl and rawNums represent here??? level? 
+//? what does the lvl and rawNums represent here??? level?
 //only output first two level?
 void
 DomainBlock::dump(std::ostream &s, int lvl, bool rawNums, std::string indent) const
@@ -474,7 +474,7 @@ DomainBlock::DoSubdivideUniform(int nx, int ny, int nz)
 
                 snprintf(n, 64, "%ld%ld%ld", i,j,k);
                 //Create a new data block meta info
-                //add this meta info to the list of children within current datadomain 
+                //add this meta info to the list of children within current datadomain
                 DomainBlock *blk = AddChild(b, n);
 
                 //Propagate the block type to the children.
@@ -598,7 +598,7 @@ DomainBlock::Dump(std::vector<DomainBlock*> &v, std::ostream &s, int lvl, bool r
 }
 
 int
-DomainBlock::TotalNumLeaves(std::vector<DomainBlock*> &v)
+DomainBlock::TotalNumLeaves(const std::vector<DomainBlock*> &v)
 {
     int N = 0;
     for (std::size_t i = 0; i < v.size(); i++)
@@ -634,14 +634,14 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
       v[i]->skipSharedFaceStats = _skipSharedFaceStats;
       if (subdivUniform)
         // when need to sub divide the uniform
-        // subdivide curernt domain in distributed way 
+        // subdivide curernt domain in distributed way
         // nX, nY nZ represents number of subdomains in each dim
         // this condition is actually set as false in StreamlinMPI
-        v[i]->SubdivideUniform(nX, nY, nZ); 
+        v[i]->SubdivideUniform(nX, nY, nZ);
       else
         // this will subdivide the domain into the internal region and the bounudary region
         // pct represents the ratio of the border width to the entire width
-        v[i]->SubdivideFaces(nX, nY, nZ, pct); 
+        v[i]->SubdivideFaces(nX, nY, nZ, pct);
 
       totLeafs += v[i]->NumLeafs(); // compute how many leaf for the current block
     }
@@ -674,7 +674,7 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
 }
 
 DomainBlock *
-DomainBlock::GetBlockFromGID(std::vector<DomainBlock*>& vtkmNotUsed(v), int gid)
+DomainBlock::GetBlockFromGID(const std::vector<DomainBlock*>& vtkmNotUsed(v), int gid)
 {
     std::map<int,DomainBlock*>::iterator it = leafMap.find(gid);
     if (it == leafMap.end())
