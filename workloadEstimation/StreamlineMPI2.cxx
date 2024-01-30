@@ -688,6 +688,18 @@ PickRandomWeightedDst(const std::vector<FlowStat>& entries)
 
 }
 
+void
+ReduceToRoot(std::vector<int>& data)
+{
+  std::vector<int> tmp;
+  if (Rank == 0)
+    tmp.resize(data.size(), 0);
+
+  MPI_Reduce(data.data(), tmp.data(), data.size(), MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+  if (Rank == 0)
+    data = tmp;
+}
+
 void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
                          const vtkm::cont::DataSet& ds,
                          std::map<int, std::vector<FlowStat>>& flowMap,
@@ -748,10 +760,10 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
   }
 
   // Calculate the block popularity over all ranks.
-  MPI_Allreduce(MPI_IN_PLACE, blockPopularity.data(), blockPopularity.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, particlesIn.data(), particlesIn.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, particlesOut.data(), particlesOut.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, cycleCnt.data(), cycleCnt.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  ReduceToRoot(blockPopularity);
+  ReduceToRoot(particlesIn);
+  ReduceToRoot(particlesOut);
+  ReduceToRoot(cycleCnt);
 }
 
 
