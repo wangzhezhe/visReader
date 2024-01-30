@@ -44,7 +44,7 @@ int Rank, Size;
 //using long int to prevent the `larger than max_size()` error for some configurations
 long int NUMVALS = -1;
 
-const int PRINT_RANK = 0;
+const int PRINT_RANK = -1;
 
 template <typename T>
 std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
@@ -88,59 +88,6 @@ static vtkm::FloatDefault random_1()
   return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
 }
 
-/*
-void LoadData(std::string &fname, std::string &fieldNm, std::vector<vtkm::cont::DataSet> &dataSets, int rank, int nRanks)
-{
-  std::string buff;
-  std::ifstream is;
-  is.open(fname);
-  std::cout << "Opening: " << fname << std::endl;
-  if (!is)
-  {
-    std::cout << "File not found! : " << fname << std::endl;
-    throw "unknown file: " + fname;
-  }
-
-  auto p0 = fname.rfind(".visit");
-  if (p0 == std::string::npos)
-    throw "Only .visit files are supported.";
-  auto tmp = fname.substr(0, p0);
-  auto p1 = tmp.rfind("/");
-  auto dir = tmp.substr(0, p1);
-
-  std::getline(is, buff);
-  auto numBlocks = std::stoi(buff.substr(buff.find("!NBLOCKS ") + 9, buff.size()));
-  if (rank == 0)
-    std::cout << "numBlocks= " << numBlocks << std::endl;
-
-  int nPer = numBlocks / nRanks;
-  int b0 = rank * nPer, b1 = (rank + 1) * nPer;
-  if (rank == (nRanks - 1))
-    b1 = numBlocks;
-
-  for (int i = 0; i < numBlocks; i++)
-  {
-    std::getline(is, buff);
-    if (i >= b0 && i < b1)
-    {
-      vtkm::cont::DataSet ds;
-      std::string vtkFile = dir + "/" + buff;
-      vtkm::io::VTKDataSetReader reader(vtkFile);
-      ds = reader.ReadDataSet();
-      auto f = ds.GetField(fieldNm).GetData();
-      vtkm::cont::ArrayHandle<vtkm::Vec<double, 3>> fieldArray;
-      f.AsArrayHandle(fieldArray);
-      int n = fieldArray.GetNumberOfValues();
-      auto portal = fieldArray.WritePortal();
-      for (int ii = 0; ii < n; ii++)
-        portal.Set(ii, vtkm::Vec<double, 3>(1, 0, 0));
-
-      dataSets.push_back(ds);
-    }
-  }
-}
-*/
-
 // Example computing streamlines.
 // An example vector field is available in the vtk-m data directory: magField.vtk
 // Example usage:
@@ -165,168 +112,6 @@ void GenerateTestPts(DomainBlock *leaf, int numPts, std::vector<vtkm::Particle> 
     // Doesn't matter what the ID is....
     pts.push_back(vtkm::Particle(pt, i));
   }
-}
-
-class nextBlock
-{
-public:
-  nextBlock()
-  {
-    cnt = 0;
-    numIters = 0;
-  }
-
-  void visit(int i)
-  {
-    cnt++;
-    numIters += i;
-  }
-
-  int cnt, numIters;
-};
-
-void RunTestPts(std::vector<DomainBlock *> blockInfo,
-                vtkm::Id blkId,
-                DomainBlock *leaf,
-                const vtkm::filter::flow::internal::BoundsMap &boundsMap,
-                std::vector<vtkm::Particle> &seeds,
-                const vtkm::cont::DataSet &ds,
-                const std::string &fieldNm,
-                std::vector<int> &leafData,
-                vtkm::FloatDefault stepSize,
-                vtkm::Id maxSteps)
-{
-  using ArrayType = vtkm::cont::ArrayHandle<vtkm::Vec3f>;
-  using FieldType = vtkm::worklet::flow::VelocityField<ArrayType>;
-  using GridEvalType = vtkm::worklet::flow::GridEvaluator<FieldType>;
-  using RK4Type = vtkm::worklet::flow::RK4Integrator<GridEvalType>;
-  using Stepper = vtkm::worklet::flow::Stepper<RK4Type, GridEvalType>;
-
-  auto seedsCopy = seeds;
-
-  auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::Off);
-
-  ArrayType arr;
-  vtkm::cont::ArrayCopyShallowIfPossible(ds.GetField(fieldNm).GetData(), arr);
-  FieldType velocities(arr, ds.GetField(fieldNm).GetAssociation());
-  GridEvalType gridEval(ds, velocities);
-  Stepper rk4(gridEval, stepSize);
-
-  vtkm::worklet::flow::ParticleAdvection pa;
-  auto res = pa.Run(rk4, seedArray, maxSteps);
-
-  std::map<int, nextBlock *> nextBlocks;
-  // get results information after particle advection
-  auto ptsPortal = res.Particles.ReadPortal();
-  vtkm::Id totNumSteps = 0, totNumPts = 0;
-  // go through each particle
-  for (vtkm::Id i = 0; i < ptsPortal.GetNumberOfValues(); i++)
-  {
-    auto pt = ptsPortal.Get(i);
-    auto pt0 = seedsCopy[i];
-    // find the destination of current particle according to particle's position
-    // ignore the current block id
-    auto destinations = boundsMap.FindBlocks(pt.GetPosition(), blkId);
-    vtkm::Id dst = -1;
-    DomainBlock *dstLeaf = nullptr;
-
-    if (destinations.empty())
-    {
-      // if the destination is empty, maybe the particle still locate in the same block
-      // get the parent node recursively until the one at the top level
-      auto ptr = leaf->parent;
-      while (ptr->parent != nullptr)
-        ptr = ptr->parent;
-      // the destination is the global id of that parent
-      // the destination leaf is still the same ptr node
-      dst = ptr->gid;
-      dstLeaf = ptr;
-    }
-    else
-    {
-      // if the destination is not empty, the dst leaf is the leaf
-      // of associated destination block
-      dst = destinations[0];
-      dstLeaf = blockInfo[dst]->GetLeaf(pt.GetPosition());
-    }
-
-    nextBlock *n;
-    auto it = nextBlocks.find(dstLeaf->gid);
-    if (it == nextBlocks.end())
-    {
-      n = new nextBlock();
-      nextBlocks[dstLeaf->gid] = n;
-    }
-    else
-      n = it->second;
-    // update the the next block value
-    n->visit(pt.GetNumberOfSteps());
-    totNumSteps += pt.GetNumberOfSteps();
-    totNumPts++;
-
-    if (Rank == PRINT_RANK)
-    {
-      // id of the particle, start position(seeds position), end position, #of integration steps
-      // block id of start position, block id of end position, id of start leaf, id of end leaf
-      if (i == 0)
-        std::cout << " *** ID, pos0-->posn, #steps, id0-->idn (large block id), leaf0-->leafn (global subdomain leaf id)" << std::endl;
-      std::cout << pt.GetID() << "," << pt0.GetPosition() << "-->" << pt.GetPosition() << "," << pt.GetNumberOfSteps();
-      std::cout << ",(" << blkId << "-->" << dst << ")";
-      std::cout << ",(" << leaf->gid << "(" << leaf->nm << ")-->" << dstLeaf->gid << "(";
-      if (dstLeaf->gid == -1)
-        std::cout << "NULL";
-      else
-        std::cout << dstLeaf->nm;
-      std::cout << "))" << std::endl;
-    }
-  }
-
-  // Put the nextBlocks into an array.
-  // This leafData is empty when calling the RunTestPts function
-  // It stors next blocks information for current subdomain
-  // for the nextBlocks, the key is the global id of block, the value is the nextBlock entity
-  int index = 0;
-  leafData.resize(nextBlocks.size() * 4, -1);
-  for (auto it = nextBlocks.begin(); it != nextBlocks.end(); it++)
-  {
-    auto n = it->second;
-    // global id of next one
-    leafData[index++] = it->first;
-    // the number of particles in the next block, this increase one when there is a new particle go to next block
-    leafData[index++] = n->cnt;
-    // sum of steps for all particles to go to the next block
-    // all steps for particles goes into the next block are added into this value
-    leafData[index++] = n->numIters;
-    // total number of points
-    leafData[index++] = totNumPts;
-
-    delete n;
-  }
-  if (index >= NUMVALS)
-  {
-    throw "memory overflow in leafData. NUMVALS is too small!";
-  }
-
-  nextBlocks.clear();
-}
-
-vtkm::cont::DataSet
-CreateUniformDataSet(const vtkm::Bounds &bounds,
-                     const vtkm::Id3 &dims)
-{
-  vtkm::Vec3f origin(static_cast<vtkm::FloatDefault>(bounds.X.Min),
-                     static_cast<vtkm::FloatDefault>(bounds.Y.Min),
-                     static_cast<vtkm::FloatDefault>(bounds.Z.Min));
-  vtkm::Vec3f spacing(static_cast<vtkm::FloatDefault>(bounds.X.Length()) /
-                          static_cast<vtkm::FloatDefault>((dims[0] - 1)),
-                      static_cast<vtkm::FloatDefault>(bounds.Y.Length()) /
-                          static_cast<vtkm::FloatDefault>((dims[1] - 1)),
-                      static_cast<vtkm::FloatDefault>(bounds.Z.Length()) /
-                          static_cast<vtkm::FloatDefault>((dims[2] - 1)));
-
-  vtkm::cont::DataSetBuilderUniform dataSetBuilder;
-  vtkm::cont::DataSet ds = dataSetBuilder.Create(dims, origin, spacing);
-  return ds;
 }
 
 std::map<int, std::vector<int>>
@@ -380,87 +165,6 @@ DetectCycles(const std::vector<int> &blockPath, int len,
 
   return ret;
 }
-
-void CalcuateBlockPopularity(std::vector<DomainBlock *> blockInfo,
-                             const vtkm::filter::flow::internal::BoundsMap &boundsMap,
-                             std::vector<int> &blockPopularity,
-                             std::vector<int> &particlesIn,
-                             std::vector<int> &particlesOut,
-                             std::vector<int> &cycleCnt,
-                             int numPts, int maxSteps)
-{
-  int blockID = Rank;
-  auto block = blockInfo[blockID];
-
-  std::vector<vtkm::Particle> seeds;
-  GenerateTestPts(block, numPts, seeds);
-
-  int seedCnt = 0;
-  for (const auto &seed : seeds)
-  {
-    auto destinations = boundsMap.FindBlocks(seed.GetPosition());
-    if (destinations.empty())
-      continue;
-
-    int dst = destinations[0];
-    DomainBlock *dstLeaf = blockInfo[dst]->GetLeaf(seed.GetPosition());
-
-    vtkm::FloatDefault numSteps = static_cast<vtkm::FloatDefault>(maxSteps);
-
-    const int winSZ = 2;
-    std::vector<int> window(winSZ, -1);
-    std::vector<int> domPath;
-    while (true)
-    {
-      domPath.push_back(dstLeaf->dom);
-      // Determine the destination based on a random percentage.
-      vtkm::FloatDefault pct = random_1();
-
-      // make sure this seed goes to which direaction
-      int idx = dstLeaf->GetDataIdxFromPct(pct, Rank);
-      // if (Rank == PRINT_RANK && seedId >= 0)
-      // {
-      //   std::cout << "debug pct " << pct << " destidx " << idx << std::endl;
-      // }
-      if (idx == -1)
-        break;
-      const DomainBlock::blockData &data = dstLeaf->data[idx];
-
-      // Take avgIt steps in this block.
-      // dom represent the original block id before subdivision
-      blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt + 0.5);
-      // blockPopularity[dstLeaf->dom] += static_cast<int>(data.avgIt );
-      numSteps -= data.avgIt;
-      particlesOut[dstLeaf->dom]++;
-
-      // Next destination.
-      auto nextLeaf = data.blk;
-
-      // If we took the max number of steps, or we terminated (ended up in the same block), we are done.
-      if (numSteps <= 0 || nextLeaf->leafBlockType == DomainBlock::INTERNAL)
-        break;
-
-      // continue in the next leaf.
-      particlesIn[nextLeaf->dom]++;
-      dstLeaf = nextLeaf;
-    }
-
-    // if (Rank == 0 && seedCnt == 0)
-    {
-      // std::cout<<"DOMPath: "<<domPath<<std::endl;
-      DetectCycles(domPath, 2, cycleCnt);
-      // std::cout<<"Cycles: "<<cycleCnt<<std::endl;
-    }
-    seedCnt++;
-  }
-
-  // Calculate the block popularity over all ranks.
-  MPI_Allreduce(MPI_IN_PLACE, blockPopularity.data(), blockPopularity.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, particlesIn.data(), particlesIn.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, particlesOut.data(), particlesOut.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(MPI_IN_PLACE, cycleCnt.data(), cycleCnt.size(), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-}
-
 
 class FlowEntry
 {
@@ -669,7 +373,6 @@ AdvectFaceSeeds(const vtkm::cont::DataSet& ds,
                 std::vector<vtkm::Particle>& seeds)
 {
   //Advect all these points and see where they go.
-  if (Rank == 0) std::cout<<"Advect face seeds: num= "<<seeds.size()<<std::endl;
   auto seedArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
   using ArrayType = vtkm::cont::ArrayHandle<vtkm::Vec3f>;
   using FieldType = vtkm::worklet::flow::VelocityField<ArrayType>;
@@ -680,12 +383,15 @@ AdvectFaceSeeds(const vtkm::cont::DataSet& ds,
   ArrayType arr;
   vtkm::cont::ArrayCopyShallowIfPossible(ds.GetField(fieldNm).GetData(), arr);
   auto arrP = arr.WritePortal();
+
+  /*
   vtkm::Vec3f vecX(1,0,0);
   for (vtkm::Id i = 0; i < arr.GetNumberOfValues(); i++)
   {
     arrP.Set(i, vecX);
   }
   if (Rank == 0) std::cout<<"**********************************  using VecX!!!"<<std::endl;
+  */
 
 
   FieldType velocities(arr, ds.GetField(fieldNm).GetAssociation());
@@ -716,11 +422,6 @@ BuildFlowMap(const T& endPtsPortal,
   int totNumLeafs = DomainBlock::TotalNumLeaves(blockInfo);
   int numLeafs = blockInfo[blockID]->NumLeafs();
   vtkm::Id numPts = endPtsPortal.GetNumberOfValues();
-
-  if (Rank == 1)
-  {
-    std::cout<<"Here we are in Rank=1"<<std::endl;
-  }
 
   for (vtkm::Id i = 0; i < numPts; i++)
   {
@@ -783,7 +484,7 @@ BuildFlowMap(const T& endPtsPortal,
       }
       */
 
-      std::cout<<i<<": "<<p0<<" "<<srcLeaf->gid<<" "<<srcLeaf->nm<<" -- "<<numSteps<<" --> "<<p1<<" "<<dst<<" "<<dstNm<<" "<<p.GetStatus()<<std::endl;
+      //std::cout<<i<<": "<<p0<<" "<<srcLeaf->gid<<" "<<srcLeaf->nm<<" -- "<<numSteps<<" --> "<<p1<<" "<<dst<<" "<<dstNm<<" "<<p.GetStatus()<<std::endl;
     }
 
     //We have src/dst. Add it to the map.
@@ -812,8 +513,9 @@ BuildFlowMap(const T& endPtsPortal,
     }
   }
 
-  if (Rank == 0)
+  if (Rank == PRINT_RANK)
   {
+    std::cout<<"*******************************  Local flow map"<<std::endl;
     for (auto it : flowMap)
     {
       std::cout<<"Src: "<<it.first<<" totPts= "<<countFromSource[it.first]<<"  (dst, totNumSteps, TotNumPts)"<<std::endl;
@@ -822,8 +524,7 @@ BuildFlowMap(const T& endPtsPortal,
         std::cout<<"  "<<entry.dst<<" "<<entry.totNumSteps<<" "<<entry.totNumP<<std::endl;
       }
     }
-
-    std::cout<<"----------------------------"<<std::endl;
+    std::cout<<"*******************************"<<std::endl;
   }
 }
 
@@ -834,7 +535,6 @@ ComputeGlobalFlowMap(vtkm::Id Nxyz,
                      const std::vector<DomainBlock *>& blockInfo,
                      const std::map<int,int>& countFromSource)
 {
-  if (Rank == 0) std::cout<<"************************ FlattenFlowMap"<<std::endl;
   //determine largest size of an entry for a flow map.
   //maxSz[0]: max number of keys in flowMap
   //maxSz[1]: max number of array size in values for each key.
@@ -914,8 +614,9 @@ ComputeGlobalFlowMap(vtkm::Id Nxyz,
       std::sort(it->second.begin(), it->second.end(), FlowStat::rev_sorter);
   }
 
-  if (Rank == 0)
+  if (Rank == PRINT_RANK)
   {
+    std::cout<<"********* Global Flow Map "<<std::endl;
     for (auto it = allFlowMap.begin(); it != allFlowMap.end(); it++)
     {
       auto leaf = DomainBlock::GetBlockFromGID(blockInfo, it->first);
@@ -927,6 +628,7 @@ ComputeGlobalFlowMap(vtkm::Id Nxyz,
       }
       std::cout<<std::endl;
     }
+    std::cout<<"*********"<<std::endl;
   }
 
   return allFlowMap;
@@ -947,7 +649,6 @@ CreateFlowMap(vtkm::Id Nxyz,
 {
   // Go through all subdomains and compute the number of leaves
   std::vector<vtkm::Particle> seeds;
-  if (Rank == 0) std::cout<<"SeedFaces"<<std::endl;
   GenerateFaceSeeds1(ds, seeds, numFacePts);
   GenerateInteriorSeeds(ds, seeds, numInteriorPts, 0.01);
 
