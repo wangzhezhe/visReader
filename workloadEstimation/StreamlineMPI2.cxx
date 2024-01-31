@@ -644,14 +644,12 @@ CreateFlowMap(vtkm::Id Nxyz,
               vtkm::FloatDefault stepSize,
               vtkm::Id maxSteps,
               int numFacePts,
-              int numInteriorPts,
               const vtkm::filter::flow::internal::BoundsMap& boundsMap)
 {
   // Go through all subdomains and compute the number of leaves
   std::vector<vtkm::Particle> seeds;
   //Each face is broken up into Nxyz x Nxyz pieces.
   GenerateFaceSeeds1(ds, seeds, numFacePts * Nxyz * Nxyz);
-  //GenerateInteriorSeeds(ds, seeds, numInteriorPts, 0.01);
 
   auto res = AdvectFaceSeeds(ds, fieldNm, stepSize, maxSteps, seeds);
 
@@ -788,9 +786,9 @@ int main(int argc, char **argv)
 {
   if (Rank == 0)
   {
-    if (argc != 10)
+    if (argc != 8)
     {
-      std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <numFacePts> <numInteriorPts> <numTestPts> <Nxyz> <pctWidth>" << std::endl;
+      std::cout << "<executable> <visitfileName> <fieldNm> <stepSize> <maxSteps> <numFacePts> <numTestPts> <Nxyz>" << std::endl;
       exit(0);
     }
   }
@@ -815,16 +813,9 @@ int main(int argc, char **argv)
   vtkm::FloatDefault stepSize = std::atof(argv[3]);
   vtkm::Id maxSteps = std::atoi(argv[4]);
   vtkm::Id numFacePts = std::atoi(argv[5]);
-  vtkm::Id numInteriorPts = std::atoi(argv[6]);
-  vtkm::Id numTestPts = std::atoi(argv[7]);
-  vtkm::Id Nxyz = std::atoi(argv[8]);
-  vtkm::FloatDefault pctWidth = std::stod(argv[9]);
-
-  if (pctWidth <= 0 || pctWidth >= 0.5)
-  {
-    std::cout << "pctWidth shoule be a value between 0 to 0.5" << std::endl;
-    exit(0);
-  }
+  vtkm::Id numTestPts = std::atoi(argv[6]);
+  vtkm::Id Nxyz = std::atoi(argv[7]);
+  vtkm::FloatDefault pctWidth = 0.05;
 
   if (Rank == 0)
   {
@@ -834,10 +825,8 @@ int main(int argc, char **argv)
     std::cout<<" stepSize: "<<stepSize<<std::endl;
     std::cout<<" maxSteps: "<<maxSteps<<std::endl;
     std::cout<<" numFacePts: "<<numFacePts<<std::endl;
-    std::cout<<" numInteriorPts: "<<numInteriorPts<<std::endl;
     std::cout<<" numTestPts: "<<numTestPts<<std::endl;
     std::cout<<" Nxyz: "<<Nxyz<<std::endl;
-    std::cout<<" pctWidth: "<<pctWidth<<std::endl;
   }
 
   std::vector<vtkm::cont::DataSet> dataSets;
@@ -865,7 +854,7 @@ int main(int argc, char **argv)
   int blockID = boundsMap.GetLocalBlockId(0);
   const auto &ds = dataSets[0];
   auto block = blockInfo[blockID];
-  auto flowMap = CreateFlowMap(Nxyz, blockInfo, ds, blockID, fieldNm, stepSize, maxSteps, numFacePts, numInteriorPts, boundsMap);
+  auto flowMap = CreateFlowMap(Nxyz, blockInfo, ds, blockID, fieldNm, stepSize, maxSteps, numFacePts, boundsMap);
 
   CalcBlockPopularity(blockInfo, ds, blockID, flowMap, boundsMap, blockPopularity, particlesIn, particlesOut, cycleCnt, numTestPts, fieldNm, stepSize, maxSteps);
 
