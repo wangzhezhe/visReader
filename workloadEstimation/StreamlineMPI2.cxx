@@ -749,6 +749,10 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
       auto it = flowMap.find(gid);
       if (it == flowMap.end())
       {
+        auto p0 = seeds[i];
+        auto p1 = seed;
+        auto l = blockInfo[bid]->GetLeaf(seed.GetPosition());
+        std::cout<<p0<<" --> "<<p1<<" into "<<l->nm<<std::endl;
         throw "Source not found! " + std::to_string(gid);
       }
       FlowStat dstEntry = PickRandomWeightedDst(it->second);
@@ -815,7 +819,7 @@ int main(int argc, char **argv)
   vtkm::Id numFacePts = std::atoi(argv[5]);
   vtkm::Id numTestPts = std::atoi(argv[6]);
   vtkm::Id Nxyz = std::atoi(argv[7]);
-  vtkm::FloatDefault pctWidth = 0.05;
+  vtkm::FloatDefault pctWidth = 0.10;
 
   if (Rank == 0)
   {
