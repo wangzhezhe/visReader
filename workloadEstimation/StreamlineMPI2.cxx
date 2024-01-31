@@ -649,8 +649,9 @@ CreateFlowMap(vtkm::Id Nxyz,
 {
   // Go through all subdomains and compute the number of leaves
   std::vector<vtkm::Particle> seeds;
-  GenerateFaceSeeds1(ds, seeds, numFacePts);
-  GenerateInteriorSeeds(ds, seeds, numInteriorPts, 0.01);
+  //Each face is broken up into Nxyz x Nxyz pieces.
+  GenerateFaceSeeds1(ds, seeds, numFacePts * Nxyz * Nxyz);
+  //GenerateInteriorSeeds(ds, seeds, numInteriorPts, 0.01);
 
   auto res = AdvectFaceSeeds(ds, fieldNm, stepSize, maxSteps, seeds);
 
@@ -702,29 +703,45 @@ ReduceToRoot(std::vector<int>& data)
 
 void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
                          const vtkm::cont::DataSet& ds,
+                         int blockID,
                          std::map<int, std::vector<FlowStat>>& flowMap,
                          const vtkm::filter::flow::internal::BoundsMap &boundsMap,
                          std::vector<int> &blockPopularity,
                          std::vector<int> &particlesIn,
                          std::vector<int> &particlesOut,
                          std::vector<int> &cycleCnt,
-                         int numPts, int maxSteps)
+                         int numPts,
+                         const std::string& fieldNm,
+                         vtkm::FloatDefault stepSize,
+                         int maxSteps)
 {
 
   std::vector<vtkm::Particle> seeds;
   GenerateInteriorSeeds(ds, seeds, numPts);
+  auto res = AdvectFaceSeeds(ds, fieldNm, stepSize, maxSteps, seeds);
+  auto portal = res.Particles.ReadPortal();
+  vtkm::Id n = portal.GetNumberOfValues();
+  vtkm::FloatDefault maxStepsFloat = static_cast<vtkm::FloatDefault>(maxSteps);
 
-  int seedCnt = 0;
-  for (const auto &seed : seeds)
+  for (vtkm::Id i = 0; i < n; i++)
   {
+    std::vector<int> domPath;
+
+    vtkm::Particle seed = portal.Get(i);
+
+    blockPopularity[blockID] += seed.GetNumberOfSteps();
+    domPath.push_back(blockID);
+
     auto bids = boundsMap.FindBlocks(seed.GetPosition());
     if (bids.empty())
       continue;
-
-    std::vector<int> domPath;
-    vtkm::FloatDefault numSteps = static_cast<vtkm::FloatDefault>(maxSteps);
-
     int bid = bids[0];
+
+    //seed terminated inside the block.
+    if (seed.GetStatus().CheckTerminate() || seed.GetNumberOfSteps() >= maxSteps || bid == blockID)
+      continue;
+
+    vtkm::FloatDefault numSteps = static_cast<vtkm::FloatDefault>(seed.GetNumberOfSteps());
     domPath.push_back(bid);
     int gid = blockInfo[bid]->GetLeaf(seed.GetPosition())->gid;
 
@@ -738,13 +755,13 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
       }
       FlowStat dstEntry = PickRandomWeightedDst(it->second);
 
-      numSteps -= dstEntry.avgSteps;
+      numSteps += dstEntry.avgSteps;
       blockPopularity[bid] += static_cast<int>(dstEntry.avgSteps + .5);
       particlesOut[bid]++;
 
       //Terminate or take max number of steps, we are done.
       int nextGID = dstEntry.dst;
-      if (nextGID == -1 || numSteps <= 0)
+      if (nextGID == -1 || numSteps >= maxStepsFloat)
         break;
 
       auto nextLeaf = DomainBlock::GetBlockFromGID(blockInfo, nextGID);
@@ -850,7 +867,7 @@ int main(int argc, char **argv)
   auto block = blockInfo[blockID];
   auto flowMap = CreateFlowMap(Nxyz, blockInfo, ds, blockID, fieldNm, stepSize, maxSteps, numFacePts, numInteriorPts, boundsMap);
 
-  CalcBlockPopularity(blockInfo, ds, flowMap, boundsMap, blockPopularity, particlesIn, particlesOut, cycleCnt, numTestPts, maxSteps);
+  CalcBlockPopularity(blockInfo, ds, blockID, flowMap, boundsMap, blockPopularity, particlesIn, particlesOut, cycleCnt, numTestPts, fieldNm, stepSize, maxSteps);
 
   MPI_Barrier(MPI_COMM_WORLD);
   if (Rank == 0)
