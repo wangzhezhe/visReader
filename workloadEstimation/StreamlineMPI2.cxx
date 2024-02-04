@@ -403,7 +403,7 @@ AdvectFaceSeeds(const vtkm::cont::DataSet& ds,
 
   //Now, figure out where each point goes.
   if (res.Particles.ReadPortal().GetNumberOfValues() != seeds.size())
-    throw "Array sizes do not match!";
+    throw std::runtime_error("Array sizes do not match!");
 
   return res;
 }
@@ -443,7 +443,7 @@ BuildFlowMap(const T& endPtsPortal,
     {
       auto destinations = boundsMap.FindBlocks(p1, blockID);
       if (destinations.size() > 1)
-        throw "Should be a single destination.";
+        throw std::runtime_error("Should be a single destination.");
 
       if (destinations.empty())
         dst = -1;
@@ -459,7 +459,7 @@ BuildFlowMap(const T& endPtsPortal,
     }
     else
     {
-      throw "Particle has unknown status.";
+      throw std::runtime_error("Particle has unknown status.");
     }
 
     std::string dstNm = "TERM";
@@ -669,7 +669,7 @@ FlowStat
 PickRandomWeightedDst(const std::vector<FlowStat>& entries)
 {
   if (entries.empty())
-    throw "Empty FlowStat";
+    throw std::runtime_error("Empty FlowStat");
 
   if (entries.size() == 1)
     return entries[0];
@@ -682,7 +682,7 @@ PickRandomWeightedDst(const std::vector<FlowStat>& entries)
     pct -= e.pct;
   }
 
-  throw "Error! pct not found";
+  throw std::runtime_error("Error! pct not found");
   return entries[entries.size()-1];
 
 }
@@ -753,7 +753,7 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
         auto p1 = seed;
         auto l = blockInfo[bid]->GetLeaf(seed.GetPosition());
         std::cout<<p0<<" --> "<<p1<<" into "<<l->nm<<std::endl;
-        throw "Source not found! " + std::to_string(gid);
+        throw std::runtime_error("Source not found! " + std::to_string(gid));
       }
       FlowStat dstEntry = PickRandomWeightedDst(it->second);
 
@@ -844,7 +844,7 @@ int main(int argc, char **argv)
   int totNumBlocks = numLocalBlocks;
   MPI_Allreduce(MPI_IN_PLACE, &totNumBlocks, 1, MPI_INT, MPI_SUM, MPIComm);
   if (totNumBlocks != Size)
-    throw "Num blocks must be the same as number of ranks";
+    throw std::runtime_error("Num blocks must be the same as number of ranks");
 
   vtkm::filter::flow::internal::BoundsMap boundsMap(dataSets);
   std::vector<DomainBlock *> blockInfo;
