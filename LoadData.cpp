@@ -121,7 +121,6 @@ static std::vector<int> assignByFile(const std::string& assignFileName, int tota
   int blockNum = 0;
   while (std::getline(infile, line))
   {
-
     // split by space
     idlist = getIntList(line);
     // std::cout << idlist.size() << std::endl;
@@ -189,12 +188,11 @@ void LoadData(const std::string& visitfileName,
   {
     throw std::runtime_error("unsupported assignStrategy");
   }
-  //using num ranks instead of numblocks
-  //since the rank may assign an empty block
-  for (int i = 0; i < nRanks; i++)
+  for (int i = 0; i < numBlocks; i++)
   {
+    //get a new vtk entry with the associated block id in visit file
     std::getline(is, buff);
-
+    //if current block id is in the blockIDList, load data
     auto it = std::find(blockIDList.begin(), blockIDList.end(), i);
     if (it != blockIDList.end())
     {

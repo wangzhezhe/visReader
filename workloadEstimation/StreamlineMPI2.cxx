@@ -852,7 +852,6 @@ int main(int argc, char **argv)
   bool subdivUniform = false;
   DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, pctWidth);
 
-
   std::vector<int> blockPopularity(Size, 0), particlesIn(Size, 0), particlesOut(Size, 0), cycleCnt(Size, 0);
 
   int blockID = boundsMap.GetLocalBlockId(0);
