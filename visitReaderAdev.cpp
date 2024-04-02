@@ -409,17 +409,17 @@ void checkArgs(int argc, char **argv, int rank, int numTasks)
       sprintf(str, "\t\t--num-particles-per-packet=%s\n", optionValue.c_str());
       strcat(repeatargs, str);
     }
-    else if (optionName == "--block-duplicate=")
+    else if (optionName == "--block-manual-id=")
     {
       if (optionValue == "true")
       {
-        strcat(repeatargs, "\t\t--block-duplicate=true\n");
-        FILTER::GLOBAL_BLOCK_DUPLICATE = true;
+        strcat(repeatargs, "\t\t--block-manual-id=true\n");
+        FILTER::GLOBAL_BLOCK_MANUALID = true;
       }
       else if (optionValue == "false")
       {
-        strcat(repeatargs, "\t\t--block-duplicate=false\n");
-        FILTER::GLOBAL_BLOCK_DUPLICATE = false;
+        strcat(repeatargs, "\t\t--block-manual-id=false\n");
+        FILTER::GLOBAL_BLOCK_MANUALID = false;
       }
     }
 

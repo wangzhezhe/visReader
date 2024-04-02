@@ -209,7 +209,7 @@ void LoadData(const std::string& visitfileName,
         auto vecField = CreateConstantVectorField(ds.GetNumberOfPoints(), vecs[i]);
         ds.AddPointField(vecNms[i], vecField);
       }
-      if (FILTER::GLOBAL_BLOCK_DUPLICATE)
+      if (FILTER::GLOBAL_BLOCK_MANUALID)
       {
         // put the id that needs to assign seeds at first position
         // this can only work properly when number of blocks equals

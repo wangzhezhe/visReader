@@ -17,7 +17,7 @@ namespace FILTER
     std::string CommStrategy = "sync";
     int GLOBAL_NUM_RECIEVERS = 64;
     int GLOBAL_NUM_PARTICLE_PER_PACKET = 128;
-    bool GLOBAL_BLOCK_DUPLICATE = false;
+    bool GLOBAL_BLOCK_MANUALID = false;
     std::vector<vtkm::Id> GLOBAL_BLOCKIDS;
 
     // the random number between 0 and 1
@@ -46,7 +46,7 @@ namespace FILTER
                                  int numSeedsPerDpmain, int rank, int numRanks, int step, bool output)
     {
 
-        if (GLOBAL_BLOCK_DUPLICATE)
+        if (GLOBAL_BLOCK_MANUALID)
         {
             // only assign block for the first block for whole vector
             int seedIdOffset = 0;
@@ -131,9 +131,9 @@ namespace FILTER
         // this assume that the numSeeds is for each rank
         // if (totNum != numSeedsPerDpmain * numRanks * domsPerRank[rank])
         //{
-        if (GLOBAL_BLOCK_DUPLICATE)
+        if (GLOBAL_BLOCK_MANUALID)
         {
-            std::cout << "Block duplicate, Info: totNum " << totNum << std::endl;
+            std::cout << "Setting block manually, Info: totNum " << totNum << std::endl;
         }
         else
         {
@@ -453,7 +453,7 @@ namespace FILTER
                 pa.SetUseAsynchronousProbeCommunication();
             }
 
-            if (FILTER::GLOBAL_BLOCK_DUPLICATE)
+            if (FILTER::GLOBAL_BLOCK_MANUALID)
             {
                 pa.SetBlockIDs(GLOBAL_BLOCKIDS);
             }

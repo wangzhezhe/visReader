@@ -16,7 +16,7 @@ namespace FILTER
     extern std::string CommStrategy;
     extern int GLOBAL_NUM_RECIEVERS;
     extern int GLOBAL_NUM_PARTICLE_PER_PACKET;
-    extern bool GLOBAL_BLOCK_DUPLICATE;
+    extern bool GLOBAL_BLOCK_MANUALID;
     extern std::vector<vtkm::Id> GLOBAL_BLOCKIDS;
 
     void runAdvection(const vtkm::cont::PartitionedDataSet &pds, int rank, int numRanks, int step,
