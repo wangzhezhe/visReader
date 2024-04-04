@@ -90,7 +90,6 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // load the data
   LoadData(visitfileName, assignStrategy, assignFileName, vtkmDataSets, blockIDList, myRank, totalRanks);
 
-
   if (vtkmDataSets.size() != blockIDList.size())
   {
     std::cout << "Error, rank " << myRank << " vtkmDataSets size " << vtkmDataSets.size() << " blockIDList size " << blockIDList.size() << std::endl;
@@ -116,7 +115,6 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
   // TODO set iteration number by outside parameter
   for (int i = 0; i < 1; i++)
   {
-
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
     vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(i);
@@ -504,6 +502,8 @@ int main(int argc, char **argv)
   try
   {
     runTest(numTasks, mpiRank, initResult.Device);
+    MPI_Barrier(MPI_COMM_WORLD);
+
   }
   catch (std::exception &e)
   {
@@ -513,13 +513,13 @@ int main(int argc, char **argv)
   }
 
   timer.Stop();
-  if (mpiRank == 0)
+
+  if (mpiRank >= 0)
   {
     printf("\nRank - %i - Total time for program = %f ms\n", mpiRank,
            timer.GetElapsedTime() * 1000);
   }
 
-  MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
 
   return 0;

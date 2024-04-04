@@ -18,7 +18,7 @@ namespace FILTER
     int GLOBAL_NUM_RECIEVERS = 64;
     int GLOBAL_NUM_PARTICLE_PER_PACKET = 128;
     bool GLOBAL_BLOCK_MANUALID = false;
-    std::vector<vtkm::Id> GLOBAL_BLOCKIDS;
+    std::vector<vtkm::Id> LOCAL_BLOCKIDS;
 
     // the random number between 0 and 1
     static vtkm::FloatDefault random01()
@@ -45,40 +45,145 @@ namespace FILTER
                                  vtkm::FloatDefault zMax,
                                  int numSeedsPerDpmain, int rank, int numRanks, int step, bool output)
     {
-
+        srand(rank + time(NULL));
         if (GLOBAL_BLOCK_MANUALID)
         {
+            // for (int i = 0; i < LOCAL_BLOCKIDS.size(); i++)
+            // {
+            //     std::cout << "rank " << rank << " blockid " << LOCAL_BLOCKIDS[i] << " " << std::endl;
+            // }
+
+            int largestNumBlocks = 0;
+            int localNumBlocks = pds.GetNumberOfPartitions();
+            MPI_Allreduce(&localNumBlocks, &largestNumBlocks, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+
+            //std::cout << "rank " << rank << " largestNumBlocks is " << largestNumBlocks << std::endl;
+
+            std::vector<int> recvAllBlockIds(numRanks * largestNumBlocks, -1);
+            std::vector<int> sendBlockIds(largestNumBlocks, -1);
+            for (int i = 0; i < LOCAL_BLOCKIDS.size(); i++)
+            {
+                sendBlockIds[i] = LOCAL_BLOCKIDS[i];
+            }
+            // gather the data
+            MPI_Allgather(&sendBlockIds[0], largestNumBlocks, MPI_INT, &recvAllBlockIds[0], largestNumBlocks, MPI_INT, MPI_COMM_WORLD);
+            int largestBlockId = 0;
+
+            // find largest block id
+            for (int i = 0; i < recvAllBlockIds.size(); i++)
+            {
+                largestBlockId = std::max(largestBlockId, recvAllBlockIds[i]);
+            }
+
+            std::vector<int> blockOccuranceNum(largestBlockId + 1, 0);
+
+            for (int i = 0; i < recvAllBlockIds.size(); i++)
+            {
+                if(recvAllBlockIds[i]==-1){
+                    //it is possible to have the empty slot
+                    //since we use the largestNumBlocks as the unit for recvAllBlockIds
+                    continue;
+                }
+                blockOccuranceNum[recvAllBlockIds[i]] += 1;
+            }
+
+            // if (rank == 0)
+            // {
+            //     for (int i = 0; i < blockOccuranceNum.size(); i++)
+            //     {
+            //         std::cout << "debug block " << i << ", occurance number " << blockOccuranceNum[i] << std::endl;
+            //     }
+            // }
+
+            // seed id should be different
+            // for each id in LOCAL_BLOCKIDS
+            // compute seeds number for each rank and get the seeds offset array
+            int localSeedsNum = 0;
+
+            for (int i = 0; i < LOCAL_BLOCKIDS.size(); i++)
+            {
+                // do not care about the reminder here
+                // the total seeds number can be a little bit larger
+                // std::cout << "debug rank" << rank << "local block id " << LOCAL_BLOCKIDS[i] << " blockOccuranceNum " << blockOccuranceNum[LOCAL_BLOCKIDS[i]] << std::endl;
+                localSeedsNum = localSeedsNum + std::ceil(numSeedsPerDpmain * 1.0 / (1.0 * blockOccuranceNum[LOCAL_BLOCKIDS[i]]));
+            }
+
+            // std::cout << "localSeedsNum for rank " << rank << " is " << localSeedsNum << std::endl;
+
+            // // process reminder
+            std::vector<int> seedsNumList;
+            seedsNumList.reserve(numRanks);
+            MPI_Allgather(&localSeedsNum, 1, MPI_INT, &seedsNumList[0], 1, MPI_INT, MPI_COMM_WORLD);
+
+            // get offset according to seedsNumList
+            if (rank == 0)
+            {
+                for (int i = 0; i < numRanks; i++)
+                {
+                    std::cout << "info: seeds number for rank" << i << " is " <<  seedsNumList[i] << std::endl;
+                }
+            }
+
+            // checking results
+            // if (rank == 0)
+            // {
+            //     std::cout << "checking aggregated results" << std::endl;
+            //     for (int i = 0; i < recvAllBlockIds.size(); i++)
+            //     {
+            //         std::cout << recvAllBlockIds[i] << std::endl;
+            //     }
+            // }
+
+            // make sure the number of occurance for each block
+
+            // deciding blocks that need to assign seeds to
+
             // only assign block for the first block for whole vector
             int seedIdOffset = 0;
             for (int i = 0; i < rank; i++)
-                seedIdOffset += (1 * numSeedsPerDpmain);
+            {
+                seedIdOffset += seedsNumList[i];
+            }
+            
+            //std::cout << "rank " << rank << " seed offset " << seedIdOffset << std::endl;
 
             int seedID = seedIdOffset;
-            if (pds.GetNumberOfPartitions() == 0)
+            int numPartitions = pds.GetNumberOfPartitions();
+            if (numPartitions == 0)
             {
                 throw std::runtime_error("no loaded data for rank " + rank);
             }
-            const auto &ds = pds.GetPartition(0);
-            auto bounds = ds.GetCoordinateSystem().GetBounds();
-            vtkm::FloatDefault xMin = bounds.X.Min, xMax = bounds.X.Max;
-            vtkm::FloatDefault yMin = bounds.Y.Min, yMax = bounds.Y.Max;
-            vtkm::FloatDefault zMin = bounds.Z.Min, zMax = bounds.Z.Max;
-            xMin += 1e-6;
-            yMin += 1e-6;
-            zMin += 1e-6;
-            xMax -= 1e-6;
-            yMax -= 1e-6;
-            zMax -= 1e-6;
-            vtkm::FloatDefault dX = xMax - xMin, dY = yMax - yMin, dZ = zMax - zMin;
-            std::cout << rank << ": " << xMin << " " << xMax << " " << yMin << " " << yMax << " " << zMin << " " << zMax << std::endl;
 
-            for (int j = 0; j < numSeedsPerDpmain; j++)
+            if (numPartitions != LOCAL_BLOCKIDS.size())
             {
-                auto x = xMin + dX * random01();
-                auto y = yMin + dY * random01();
-                auto z = zMin + dZ * random01();
-                seeds.push_back({{x, y, z}, seedID});
-                seedID++;
+                throw std::runtime_error("Error: numPartitions not equals to LOCAL_BLOCKIDS");
+            }
+
+            for (int partitionId = 0; partitionId < numPartitions; partitionId++)
+            {
+                const auto &ds = pds.GetPartition(partitionId);
+                auto bounds = ds.GetCoordinateSystem().GetBounds();
+                vtkm::FloatDefault xMin = bounds.X.Min, xMax = bounds.X.Max;
+                vtkm::FloatDefault yMin = bounds.Y.Min, yMax = bounds.Y.Max;
+                vtkm::FloatDefault zMin = bounds.Z.Min, zMax = bounds.Z.Max;
+                xMin += 1e-6;
+                yMin += 1e-6;
+                zMin += 1e-6;
+                xMax -= 1e-6;
+                yMax -= 1e-6;
+                zMax -= 1e-6;
+                vtkm::FloatDefault dX = xMax - xMin, dY = yMax - yMin, dZ = zMax - zMin;
+                //std::cout << rank << ": " << xMin << " " << xMax << " " << yMin << " " << yMax << " " << zMin << " " << zMax << std::endl;
+                int seedsNumInCurrentBlock = std::ceil(numSeedsPerDpmain * 1.0 / (1.0 * blockOccuranceNum[LOCAL_BLOCKIDS[partitionId]]));
+                //std::cout << "debug rank " << rank << " seedsNumInCurrentBlock " << seedsNumInCurrentBlock << std::endl;
+                for (int j = 0; j < seedsNumInCurrentBlock; j++)
+                {
+                    auto x = xMin + dX * random01();
+                    auto y = yMin + dY * random01();
+                    auto z = zMin + dZ * random01();
+                    seeds.push_back({{x, y, z}, seedID});
+                    seedID++;
+                }
             }
         }
         else
@@ -120,10 +225,10 @@ namespace FILTER
             }
         }
 
-        // Counting the seeds number
+        // Counting the total seeds number
         std::vector<int> seedCounts(numRanks, 0);
         seedCounts[rank] = seeds.size();
-        // std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
+        //std::cout << "debug seed count rank " << rank << " " << seedCounts[rank] << std::endl;
         MPI_Allreduce(MPI_IN_PLACE, seedCounts.data(), numRanks, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         int totNum = 0;
         for (int i = 0; i < numRanks; i++)
@@ -263,7 +368,8 @@ namespace FILTER
 
         // make sure all ranks use the same time and have the same seeds
         MPI_Barrier(MPI_COMM_WORLD);
-        srand(time(NULL));
+        // make sure each rank have different srand
+        srand(rank + time(NULL));
         for (int i = 0; i < numSeeds; i++)
         {
             float x = xMin + (xMax - xMin) * random01();
@@ -385,7 +491,9 @@ namespace FILTER
                 createSeedInEveryDomain(seeds, pds, rank, numRanks, step, outputseeds);
         }
         */
-
+        
+        MPI_Barrier(MPI_COMM_WORLD);
+        
         if (rank == 0 && step == 0)
         {
 
@@ -455,7 +563,7 @@ namespace FILTER
 
             if (FILTER::GLOBAL_BLOCK_MANUALID)
             {
-                pa.SetBlockIDs(GLOBAL_BLOCKIDS);
+                pa.SetBlockIDs(LOCAL_BLOCKIDS);
             }
             auto paOutput = pa.Execute(pds);
         }

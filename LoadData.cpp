@@ -109,7 +109,7 @@ static std::vector<int> assignBlocksToRankRR(int totalBlocks, int nRanks, int ra
 }
 
 // assign by file
-static std::vector<int> assignByFile(const std::string& assignFileName, int totalBlocks, int nRanks, int rank)
+static std::vector<int> assignByFile(const std::string &assignFileName, int totalBlocks, int nRanks, int rank)
 {
   // use the default name
   std::ifstream infile(assignFileName);
@@ -123,10 +123,24 @@ static std::vector<int> assignByFile(const std::string& assignFileName, int tota
   {
     // split by space
     idlist = getIntList(line);
+
+    sort(idlist.begin(), idlist.end());
+
+    for (int i = 1; i < idlist.size(); i++)
+    {
+      if (idlist[i] == idlist[i - 1])
+      {
+        throw std::runtime_error("Error in rank " + std::to_string(i)+ ", one block could not be assigned into one rank two times");
+      }
+    }
+
     // std::cout << idlist.size() << std::endl;
     allBlockList.push_back(idlist);
     blockNum += idlist.size();
   }
+
+  // check file content
+  // make sure one block is not loaded into same rank two times
 
   // check the file content
   // if (allBlockList.size() != nRanks)
@@ -141,10 +155,9 @@ static std::vector<int> assignByFile(const std::string& assignFileName, int tota
   return allBlockList[rank];
 }
 
-
-void LoadData(const std::string& visitfileName,
-              const AssignStrategy& assignStrategy,
-              const std::string& assignFileName,
+void LoadData(const std::string &visitfileName,
+              const AssignStrategy &assignStrategy,
+              const std::string &assignFileName,
               std::vector<vtkm::cont::DataSet> &dataSets,
               std::vector<int> &blockIDList,
               int rank,
@@ -190,9 +203,9 @@ void LoadData(const std::string& visitfileName,
   }
   for (int i = 0; i < numBlocks; i++)
   {
-    //get a new vtk entry with the associated block id in visit file
+    // get a new vtk entry with the associated block id in visit file
     std::getline(is, buff);
-    //if current block id is in the blockIDList, load data
+    // if current block id is in the blockIDList, load data
     auto it = std::find(blockIDList.begin(), blockIDList.end(), i);
     if (it != blockIDList.end())
     {
@@ -202,7 +215,7 @@ void LoadData(const std::string& visitfileName,
       vtkm::io::VTKDataSetReader reader(vtkFile);
       ds = reader.ReadDataSet();
 
-      std::vector<vtkm::Vec3f> vecs = {{1,0,0}, {0,1,0}, {1,1,0}};
+      std::vector<vtkm::Vec3f> vecs = {{1, 0, 0}, {0, 1, 0}, {1, 1, 0}};
       std::vector<std::string> vecNms = {"vecX", "vecY", "vecXY"};
       for (std::size_t i = 0; i < vecs.size(); i++)
       {
@@ -211,19 +224,9 @@ void LoadData(const std::string& visitfileName,
       }
       if (FILTER::GLOBAL_BLOCK_MANUALID)
       {
-        // put the id that needs to assign seeds at first position
-        // this can only work properly when number of blocks equals
-        // to the number of ranks, and there are duplicated blocks for ranks
-        if (rank == i)
-        {
-          FILTER::GLOBAL_BLOCKIDS.insert(FILTER::GLOBAL_BLOCKIDS.begin(), i);
-          dataSets.insert(dataSets.begin(), ds);
-        }
-        else
-        {
-          FILTER::GLOBAL_BLOCKIDS.push_back(i);
-          dataSets.push_back(ds);
-        }
+        // record block ids
+        FILTER::LOCAL_BLOCKIDS.push_back(i);
+        dataSets.push_back(ds);
       }
       else
       {
