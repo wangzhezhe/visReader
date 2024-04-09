@@ -875,8 +875,35 @@ int main(int argc, char **argv)
       blockPopNorm.push_back((float)(v) / sum);
     std::cout << "NormBlockPopularity: " << blockPopNorm << std::endl;
 
+    std::vector<float> particlesInNorm;
+    sum = std::accumulate(particlesIn.begin(), particlesIn.end(), 0);
+    for (const auto& v: particlesIn)
+      particlesInNorm.push_back((float)(v) / sum);
+
+    std::vector<float> particlesOutNorm;
+    sum = std::accumulate(particlesOut.begin(), particlesOut.end(), 0);
+    for (const auto& v: particlesOut)
+      particlesOutNorm.push_back((float)(v) / sum);
+
+    std::vector<float> particlesInOutNorm;
+    std::vector<int> particlesInOut;
+    sum = std::accumulate(particlesIn.begin(), particlesIn.end(), 0) + std::accumulate(particlesOut.begin(), particlesOut.end(), 0);
+    for (int i = 0; i < particlesIn.size(); i++)
+    {
+      int v = particlesIn[i] + particlesOut[i];
+      particlesInOut.push_back(v);
+      particlesInOutNorm.push_back((float)(v) / sum);
+    }
+
     std::cout << "ParticlesIn:  " << particlesIn << std::endl;
-    std::cout << "ParticlesOut: " << particlesOut << std::endl;
+    std::cout << "NormParticlesIn:  " << particlesInNorm << std::endl;
+
+    std::cout << "ParticlesOut:  " << particlesIn << std::endl;
+    std::cout << "NormParticlesOut: " << particlesOutNorm << std::endl;
+
+    std::cout << "ParticlesInOut: " << particlesInOut << std::endl;
+    std::cout << "NormParticlesInOut: " << particlesInOutNorm << std::endl;
+
     std::cout << "CycleCnt:     " << cycleCnt << std::endl;
   }
 
