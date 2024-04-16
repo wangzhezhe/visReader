@@ -776,6 +776,8 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
     DetectCycles(domPath, 2, cycleCnt);
     DetectCycles(domPath, 3, cycleCnt);
     DetectCycles(domPath, 4, cycleCnt);
+    DetectCycles(domPath, 5, cycleCnt);
+    DetectCycles(domPath, 6, cycleCnt);
   }
 
   // Calculate the block popularity over all ranks.
@@ -908,6 +910,11 @@ int main(int argc, char **argv)
   }
 
   MPI_Finalize();
+  timer.Stop();
+  double executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time (exclude data loading) is: " << executionTime << std::endl;
+  }
 }
 
 // mpirun -np 8 ./StreamlineMPI ./data/clover.visit vecXY >&out
