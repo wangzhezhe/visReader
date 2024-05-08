@@ -522,6 +522,11 @@ namespace FILTER
                 streamline.SetUseAsynchronousProbeCommunication();
             }
 
+            if (FILTER::GLOBAL_BLOCK_MANUALID)
+            {
+                streamline.SetBlockIDs(LOCAL_BLOCKIDS);
+            }
+
             auto streamlineOutput = streamline.Execute(pds);
 
             // TODO, maybe setting the timestep as a separate parameter
@@ -563,6 +568,10 @@ namespace FILTER
 
             if (FILTER::GLOBAL_BLOCK_MANUALID)
             {
+                //check local block ids
+                // for (int i=0;i<LOCAL_BLOCKIDS.size();i++){
+                //     std::cout << "rank " << rank << " local block id " << LOCAL_BLOCKIDS[i] << std::endl;
+                // }
                 pa.SetBlockIDs(LOCAL_BLOCKIDS);
             }
             auto paOutput = pa.Execute(pds);
