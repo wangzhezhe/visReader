@@ -44,7 +44,9 @@ int Rank, Size;
 //using long int to prevent the `larger than max_size()` error for some configurations
 long int NUMVALS = -1;
 
-const int PRINT_RANK = -1;
+const int PRINT_RANK = 6;
+const int PRINT_DETAILS = 1;
+const int SEED_PING_PONG = 1;
 
 template <typename T>
 std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
@@ -107,8 +109,6 @@ void GenerateTestPts(DomainBlock *leaf, int numPts, std::vector<vtkm::Particle> 
     vtkm::Vec3f pt(bb[0] + random_1() * dx,
                    bb[2] + random_1() * dy,
                    bb[4] + random_1() * dz);
-    pt[1] = 0.25;
-    pt[2] = 0.25;
     // Doesn't matter what the ID is....
     pts.push_back(vtkm::Particle(pt, i));
   }
@@ -220,6 +220,13 @@ BoxOfSeeds(const vtkm::Bounds& bb, int numPts, std::vector<vtkm::Particle>& seed
     vtkm::Vec3f pt(x + random_1() * dx,
                    y + random_1() * dy,
                    z + random_1() * dz);
+    if (PRINT_RANK == Rank && SEED_PING_PONG)
+    {
+      pt[0] = .32;
+      pt[1] = .495;
+      pt[2] = .47;
+    }
+
     // Doesn't matter what the ID is....
     seeds.push_back(vtkm::Particle(pt, i));
   }
@@ -435,9 +442,14 @@ BuildFlowMap(const T& endPtsPortal,
     DomainBlock *srcLeaf = blockInfo[blockID]->GetLeaf(p0);
     int dst = -1;
 
+    if (Rank == PRINT_RANK && PRINT_DETAILS)
+      std::cout<<i<<": "<<p0<<" "<<srcLeaf->nm<<" ---> "<<p1<<" "<<std::endl;
+
     if (status.CheckTerminate())
     {
       dst = -1;
+      if (Rank == PRINT_RANK && PRINT_DETAILS)
+        std::cout<<"TERMINATE"<<std::endl;
     }
     else if (status.CheckSpatialBounds())
     {
@@ -452,6 +464,8 @@ BuildFlowMap(const T& endPtsPortal,
         auto dstBlock = blockInfo[destinations[0]];
         auto dstLeaf = blockInfo[destinations[0]]->GetLeaf(p1);
         dst = dstLeaf->gid;
+        if (Rank == PRINT_RANK && PRINT_DETAILS)
+          std::cout<<" DST= "<<dstLeaf->nm<<std::endl;
         //Randomize the destination.
         //dst = random_1() * totNumLeafs;
         //dstLeaf = DomainBlock::GetBlockFromGID(blockInfo, dst);
@@ -907,6 +921,14 @@ int main(int argc, char **argv)
     std::cout << "NormParticlesInOut: " << particlesInOutNorm << std::endl;
 
     std::cout << "CycleCnt:     " << cycleCnt << std::endl;
+
+    //output to a single file.
+    std::ofstream outF("table.txt", std::ofstream::out);
+    outF<<"Block, popN, pinN, poutN, pinoutN"<<std::endl;
+    for (int i = 0; i < Size; i++)
+    {
+      outF<<i<<", "<<blockPopNorm[i]<<", "<<particlesInNorm[i]<<", "<<particlesOutNorm[i]<<", "<<particlesInOutNorm[i]<<std::endl;
+    }
   }
 
   MPI_Finalize();
