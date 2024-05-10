@@ -44,9 +44,9 @@ int Rank, Size;
 //using long int to prevent the `larger than max_size()` error for some configurations
 long int NUMVALS = -1;
 
-const int PRINT_RANK = 6;
-const int PRINT_DETAILS = 1;
-const int SEED_PING_PONG = 1;
+const int PRINT_RANK = -1;
+const int PRINT_DETAILS = -1;
+int SEED_PING_PONG = 0;
 
 template <typename T>
 std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
@@ -220,7 +220,7 @@ BoxOfSeeds(const vtkm::Bounds& bb, int numPts, std::vector<vtkm::Particle>& seed
     vtkm::Vec3f pt(x + random_1() * dx,
                    y + random_1() * dy,
                    z + random_1() * dz);
-    if (PRINT_RANK == Rank && SEED_PING_PONG)
+    if (SEED_PING_PONG)
     {
       pt[0] = .32;
       pt[1] = .495;
@@ -277,7 +277,9 @@ GenerateFaceSeeds1(const vtkm::cont::DataSet& ds,
   BoxOfSeeds(Xbb, numSeedsPerFace, seeds);
 
   BoxOfSeeds(ybb, numSeedsPerFace, seeds);
+  if (Rank == 5) SEED_PING_PONG = 1;
   BoxOfSeeds(Ybb, numSeedsPerFace, seeds);
+  if (Rank == 5) SEED_PING_PONG = 0;
 
   BoxOfSeeds(zbb, numSeedsPerFace, seeds);
   BoxOfSeeds(Zbb, numSeedsPerFace, seeds);
@@ -430,6 +432,9 @@ BuildFlowMap(const T& endPtsPortal,
   int numLeafs = blockInfo[blockID]->NumLeafs();
   vtkm::Id numPts = endPtsPortal.GetNumberOfValues();
 
+  if (Rank == PRINT_DETAILS)
+    std::cout<<"************************  BuildFlowMap"<<std::endl;
+
   for (vtkm::Id i = 0; i < numPts; i++)
   {
     auto const p = endPtsPortal.Get(i);
@@ -442,13 +447,21 @@ BuildFlowMap(const T& endPtsPortal,
     DomainBlock *srcLeaf = blockInfo[blockID]->GetLeaf(p0);
     int dst = -1;
 
-    if (Rank == PRINT_RANK && PRINT_DETAILS)
-      std::cout<<i<<": "<<p0<<" "<<srcLeaf->nm<<" ---> "<<p1<<" "<<std::endl;
+    if (Rank == PRINT_DETAILS)
+    {
+      vtkm::Vec3f pingPongPt(.32, .495, .47);
+      auto pingLeaf = blockInfo[blockID]->GetLeaf(pingPongPt);
+      if (srcLeaf == nullptr)
+      {
+        srcLeaf = blockInfo[blockID]->GetLeaf(p0);
+      }
+      std::cout<<i<<": "<<p0<<" "<<srcLeaf->nm<<" "<<srcLeaf->gid<<" ---> "<<p1<<" ";
+    }
 
     if (status.CheckTerminate())
     {
       dst = -1;
-      if (Rank == PRINT_RANK && PRINT_DETAILS)
+      if (Rank == PRINT_DETAILS)
         std::cout<<"TERMINATE"<<std::endl;
     }
     else if (status.CheckSpatialBounds())
@@ -458,13 +471,17 @@ BuildFlowMap(const T& endPtsPortal,
         throw std::runtime_error("Should be a single destination.");
 
       if (destinations.empty())
+      {
         dst = -1;
+        if (Rank == PRINT_DETAILS)
+          std::cout<<"TERMINATE"<<std::endl;
+      }
       else
       {
         auto dstBlock = blockInfo[destinations[0]];
         auto dstLeaf = blockInfo[destinations[0]]->GetLeaf(p1);
         dst = dstLeaf->gid;
-        if (Rank == PRINT_RANK && PRINT_DETAILS)
+        if (Rank == PRINT_DETAILS)
           std::cout<<" DST= "<<dstLeaf->nm<<std::endl;
         //Randomize the destination.
         //dst = random_1() * totNumLeafs;
@@ -757,6 +774,7 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
     domPath.push_back(bid);
     int gid = blockInfo[bid]->GetLeaf(seed.GetPosition())->gid;
 
+    bool inPingPong = false;
     while (true)
     {
       // Determine the destination based on a random percentage.
@@ -777,21 +795,39 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
 
       //Terminate or take max number of steps, we are done.
       int nextGID = dstEntry.dst;
+      auto nextLeaf = DomainBlock::GetBlockFromGID(blockInfo, nextGID);
+
       if (nextGID == -1 || numSteps >= maxStepsFloat)
         break;
+      if (Rank == 5)
+      {
+        if (nextGID == 141 && !inPingPong)
+        {
+          inPingPong = true;
+          std::cout<<"***** Entering ping pong sub-block bid="<<bid<<std::endl;
+        }
+        else if (inPingPong)
+        {
+          std::cout<<"***** PingPong: "<<nextGID<<" bid= "<<nextLeaf->dom<<std::endl;
+        }
+      }
 
-      auto nextLeaf = DomainBlock::GetBlockFromGID(blockInfo, nextGID);
       particlesIn[nextLeaf->dom]++;
       bid = nextLeaf->dom;
       gid = nextGID;
+      domPath.push_back(bid);
+    }
+    if (inPingPong)
+    {
+      std::cout<<"PingPongCycle: "<<domPath<<std::endl;
     }
 
     //Detect any cycles.
     DetectCycles(domPath, 2, cycleCnt);
     DetectCycles(domPath, 3, cycleCnt);
-    DetectCycles(domPath, 4, cycleCnt);
-    DetectCycles(domPath, 5, cycleCnt);
-    DetectCycles(domPath, 6, cycleCnt);
+//    DetectCycles(domPath, 4, cycleCnt);
+//    DetectCycles(domPath, 5, cycleCnt);
+//    DetectCycles(domPath, 6, cycleCnt);
   }
 
   // Calculate the block popularity over all ranks.
@@ -911,6 +947,11 @@ int main(int argc, char **argv)
       particlesInOutNorm.push_back((float)(v) / sum);
     }
 
+    std::vector<float> cycleCntNorm;
+    sum = std::accumulate(cycleCnt.begin(), cycleCnt.end(), 0);
+    for (const auto& v : cycleCnt)
+      cycleCntNorm.push_back((float)(v)/(float)sum);
+
     std::cout << "ParticlesIn:  " << particlesIn << std::endl;
     std::cout << "NormParticlesIn:  " << particlesInNorm << std::endl;
 
@@ -921,6 +962,7 @@ int main(int argc, char **argv)
     std::cout << "NormParticlesInOut: " << particlesInOutNorm << std::endl;
 
     std::cout << "CycleCnt:     " << cycleCnt << std::endl;
+    std::cout << "NormCycleCnt: " << cycleCntNorm << std::endl;
 
     //output to a single file.
     std::ofstream outF("table.txt", std::ofstream::out);
