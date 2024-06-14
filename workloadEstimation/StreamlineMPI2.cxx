@@ -277,9 +277,9 @@ GenerateFaceSeeds1(const vtkm::cont::DataSet& ds,
   BoxOfSeeds(Xbb, numSeedsPerFace, seeds);
 
   BoxOfSeeds(ybb, numSeedsPerFace, seeds);
-  if (Rank == 5) SEED_PING_PONG = 1;
+  //if (Rank == 5) SEED_PING_PONG = 1;
   BoxOfSeeds(Ybb, numSeedsPerFace, seeds);
-  if (Rank == 5) SEED_PING_PONG = 0;
+  //if (Rank == 5) SEED_PING_PONG = 0;
 
   BoxOfSeeds(zbb, numSeedsPerFace, seeds);
   BoxOfSeeds(Zbb, numSeedsPerFace, seeds);
@@ -799,18 +799,18 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
 
       if (nextGID == -1 || numSteps >= maxStepsFloat)
         break;
-      if (Rank == 5)
-      {
-        if (nextGID == 141 && !inPingPong)
-        {
-          inPingPong = true;
-          std::cout<<"***** Entering ping pong sub-block bid="<<bid<<std::endl;
-        }
-        else if (inPingPong)
-        {
-          std::cout<<"***** PingPong: "<<nextGID<<" bid= "<<nextLeaf->dom<<std::endl;
-        }
-      }
+      // if (Rank == 5)
+      // {
+      //   if (nextGID == 141 && !inPingPong)
+      //   {
+      //     inPingPong = true;
+      //     std::cout<<"***** Entering ping pong sub-block bid="<<bid<<std::endl;
+      //   }
+      //   else if (inPingPong)
+      //   {
+      //     std::cout<<"***** PingPong: "<<nextGID<<" bid= "<<nextLeaf->dom<<std::endl;
+      //   }
+      // }
 
       particlesIn[nextLeaf->dom]++;
       bid = nextLeaf->dom;
@@ -904,6 +904,13 @@ int main(int argc, char **argv)
   bool subdivUniform = false;
   DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, pctWidth);
 
+  timer.Stop();
+  double executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to CreateBlockInfo is: " << executionTime << std::endl;
+  }
+  timer.Start();
+
   std::vector<int> blockPopularity(Size, 0), particlesIn(Size, 0), particlesOut(Size, 0), cycleCnt(Size, 0);
 
   int blockID = boundsMap.GetLocalBlockId(0);
@@ -914,6 +921,14 @@ int main(int argc, char **argv)
   CalcBlockPopularity(blockInfo, ds, blockID, flowMap, boundsMap, blockPopularity, particlesIn, particlesOut, cycleCnt, numTestPts, fieldNm, stepSize, maxSteps);
 
   MPI_Barrier(MPI_COMM_WORLD);
+
+  timer.Stop();
+  executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to CalcBlockPopularity is: " << executionTime << std::endl;
+  }
+  timer.Start();
+
   if (Rank == 0)
   {
     std::cout << std::endl
@@ -975,9 +990,9 @@ int main(int argc, char **argv)
 
   MPI_Finalize();
   timer.Stop();
-  double executionTime = timer.GetElapsedTime();
+  executionTime = timer.GetElapsedTime();
   if(Rank==0){
-    std::cout << "Execution time (exclude data loading) is: " << executionTime << std::endl;
+    std::cout << "Execution time to Output log is: " << executionTime << std::endl;
   }
 }
 
