@@ -677,12 +677,22 @@ CreateFlowMap(vtkm::Id Nxyz,
               int numFacePts,
               const vtkm::filter::flow::internal::BoundsMap& boundsMap)
 {
+
+  vtkm::cont::Timer timer;
+  timer.Start();
   // Go through all subdomains and compute the number of leaves
   std::vector<vtkm::Particle> seeds;
   //Each face is broken up into Nxyz x Nxyz pieces.
   GenerateFaceSeeds1(ds, seeds, numFacePts * Nxyz * Nxyz);
 
   auto res = AdvectFaceSeeds(ds, fieldNm, stepSize, maxSteps, seeds);
+
+  timer.Stop();
+  double executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to AdvectFaceSeeds in CreateFlowMap is: " << executionTime << std::endl;
+  }
+  timer.Start();
 
   //create the flow map for the test seeds.
 
@@ -692,7 +702,22 @@ CreateFlowMap(vtkm::Id Nxyz,
   std::map<int,int> countFromSource;
   BuildFlowMap(res.Particles.ReadPortal(), seeds, blockID, blockInfo, boundsMap, flowMap, countFromSource);
 
+  timer.Stop();
+  executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to BuildFlowMap in CreateFlowMap is: " << executionTime << std::endl;
+  }
+  timer.Start();
+
   auto globalFlowMap = ComputeGlobalFlowMap(Nxyz, flowMap, blockID, blockInfo, countFromSource);
+  
+  timer.Stop();
+  executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to ComputeGlobalFlowMap in CreateFlowMap is: " << executionTime << std::endl;
+  }
+  timer.Start();
+  
   return globalFlowMap;
 }
 
@@ -917,6 +942,13 @@ int main(int argc, char **argv)
   const auto &ds = dataSets[0];
   auto block = blockInfo[blockID];
   auto flowMap = CreateFlowMap(Nxyz, blockInfo, ds, blockID, fieldNm, stepSize, maxSteps, numFacePts, boundsMap);
+  
+  timer.Stop();
+  executionTime = timer.GetElapsedTime();
+  if(Rank==0){
+    std::cout << "Execution time to CreateFlowMap is: " << executionTime << std::endl;
+  }
+  timer.Start(); 
 
   CalcBlockPopularity(blockInfo, ds, blockID, flowMap, boundsMap, blockPopularity, particlesIn, particlesOut, cycleCnt, numTestPts, fieldNm, stepSize, maxSteps);
 
