@@ -29,6 +29,18 @@ DomainBlock::DomainBlock(int d, vtkm::FloatDefault *b, std::string n)
     leafBlockType = NONE;
 }
 
+void DomainBlock::PrintInfo(std::string indent){
+std::cout << indent << " info domid " <<this->dom <<", subid "<< this->sub << ", gid " << this->gid <<", name "<< this->nm << ", LeafBlockType " << int(this->leafBlockType) << std::endl;
+//when gid it -1 it is dummy node, which is supposed to be decomposed into sub-blocks
+//subid is unique in each block
+//gid is unique for all domain containing multiple blocks
+std::cout << indent << " block info " <<this->bbox[0] <<"," << this->bbox[1] <<"," << this->bbox[2]<<"," << this->bbox[3]<<"," << this->bbox[4] <<"," << this->bbox[5] << std::endl;
+std::cout << indent << " children size " << (this->children).size() << std::endl;
+for(int i=0;i<(this->children).size();i++){
+    std::string indentNext=indent+"    ";
+    this->children[i]->PrintInfo(indentNext);
+}
+}
 /*
 DomainBlock::DomainBlock(int d, double *b, std::string n)
 {
@@ -642,8 +654,9 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
         // this will subdivide the domain into the internal region and the bounudary region
         // pct represents the ratio of the border width to the entire width
         v[i]->SubdivideFaces(nX, nY, nZ, pct);
-
+      
       totLeafs += v[i]->NumLeafs(); // compute how many leaf for the current block
+
     }
 
     //Set the GIDs, and the name map.
@@ -671,6 +684,10 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
             leafMap[leaves[j]->gid] = leaves[j];
         }
     }
+
+    //check the all block info as needed
+    //v[0]->PrintInfo("");
+      
 }
 
 DomainBlock *

@@ -99,6 +99,9 @@ public:
 
   bool BlocksShareFace(DomainBlock *blk);
 
+  void PrintInfo(std::string indent);
+
+
   class blockData
   {
   public:
@@ -136,6 +139,7 @@ public:
     static bool cmp(const blockData &a, const blockData &b) { return a.pct < b.pct; }
     static bool rcmp(const blockData &a, const blockData &b) { return a.pct > b.pct; }
   };
+
 
   // members.
   DomainBlock *parent;

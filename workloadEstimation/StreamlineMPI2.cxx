@@ -410,7 +410,7 @@ AdvectFaceSeeds(const vtkm::cont::DataSet& ds,
   vtkm::worklet::flow::ParticleAdvection pa;
   auto res = pa.Run(rk4, seedArray, maxSteps);
 
-  //Now, figure out where each point goes.
+  //After this step, we could figure out where each point goes.
   if (res.Particles.ReadPortal().GetNumberOfValues() != seeds.size())
     throw std::runtime_error("Array sizes do not match!");
 
@@ -683,6 +683,8 @@ CreateFlowMap(vtkm::Id Nxyz,
   // Go through all subdomains and compute the number of leaves
   std::vector<vtkm::Particle> seeds;
   //Each face is broken up into Nxyz x Nxyz pieces.
+  //Althgough the total number of seeds in face is numFacePts * Nxyz * Nxyz
+  //When we build the index, we divide each face into Nxyz*Nxyz partitions
   GenerateFaceSeeds1(ds, seeds, numFacePts * Nxyz * Nxyz);
 
   auto res = AdvectFaceSeeds(ds, fieldNm, stepSize, maxSteps, seeds);
@@ -695,7 +697,6 @@ CreateFlowMap(vtkm::Id Nxyz,
   timer.Start();
 
   //create the flow map for the test seeds.
-
   // {src : {dst, totNumSteps, totNumP}}
   std::map<int, std::vector<FlowEntry>> flowMap;
   int numLeafs = blockInfo[blockID]->NumLeafs();
@@ -1012,12 +1013,12 @@ int main(int argc, char **argv)
     std::cout << "NormCycleCnt: " << cycleCntNorm << std::endl;
 
     //output to a single file.
-    std::ofstream outF("table.txt", std::ofstream::out);
-    outF<<"Block, popN, pinN, poutN, pinoutN"<<std::endl;
-    for (int i = 0; i < Size; i++)
-    {
-      outF<<i<<", "<<blockPopNorm[i]<<", "<<particlesInNorm[i]<<", "<<particlesOutNorm[i]<<", "<<particlesInOutNorm[i]<<std::endl;
-    }
+    // std::ofstream outF("table.txt", std::ofstream::out);
+    // outF<<"Block, popN, pinN, poutN, pinoutN"<<std::endl;
+    // for (int i = 0; i < Size; i++)
+    // {
+    //   outF<<i<<", "<<blockPopNorm[i]<<", "<<particlesInNorm[i]<<", "<<particlesOutNorm[i]<<", "<<particlesInOutNorm[i]<<std::endl;
+    // }
   }
 
   MPI_Finalize();
