@@ -686,7 +686,10 @@ DomainBlock::CreateBlockInfo(std::vector<DomainBlock*> &v, int nDom, vtkm::filte
     }
 
     //check the all block info as needed
-    //v[0]->PrintInfo("");
+    for(int i=0;i<nDom;i++){
+        std::cout << "------info for domain " << i << std::endl;
+        v[i]->PrintInfo("");
+    }
       
 }
 
