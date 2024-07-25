@@ -467,8 +467,13 @@ BuildFlowMap(const T& endPtsPortal,
     else if (status.CheckSpatialBounds())
     {
       auto destinations = boundsMap.FindBlocks(p1, blockID);
-      if (destinations.size() > 1)
-        throw std::runtime_error("Should be a single destination.");
+      if (destinations.size() > 1){
+         std::cout << "warning, multiple destination.";
+         for(int k=0;k<destinations.size();k++){
+          std::cout << destinations[i] << ",";
+         }
+         std::cout<<std::endl;
+      }
 
       if (destinations.empty())
       {
@@ -850,8 +855,8 @@ void CalcBlockPopularity(std::vector<DomainBlock *> blockInfo,
     }
 
     //Detect any cycles.
-    DetectCycles(domPath, 2, cycleCnt);
-    DetectCycles(domPath, 3, cycleCnt);
+    //DetectCycles(domPath, 2, cycleCnt);
+    //DetectCycles(domPath, 3, cycleCnt);
 //    DetectCycles(domPath, 4, cycleCnt);
 //    DetectCycles(domPath, 5, cycleCnt);
 //    DetectCycles(domPath, 6, cycleCnt);
