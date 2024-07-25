@@ -433,7 +433,7 @@ BuildFlowMap(const T& endPtsPortal,
   vtkm::Id numPts = endPtsPortal.GetNumberOfValues();
 
   if (Rank == PRINT_DETAILS)
-    std::cout<<"************************  BuildFlowMap"<<std::endl;
+    std::cout<<"************************  BuildFlowMap"  <<std::endl;
 
   for (vtkm::Id i = 0; i < numPts; i++)
   {
@@ -479,7 +479,7 @@ BuildFlowMap(const T& endPtsPortal,
       else
       {
         auto dstBlock = blockInfo[destinations[0]];
-        auto dstLeaf = blockInfo[destinations[0]]->GetLeaf(p1);
+        auto dstLeaf = dstBlock->GetLeaf(p1);
         dst = dstLeaf->gid;
         if (Rank == PRINT_DETAILS)
           std::cout<<" DST= "<<dstLeaf->nm<<std::endl;
@@ -524,7 +524,7 @@ BuildFlowMap(const T& endPtsPortal,
     countFromSource[srcLeaf->gid]++;
 
     auto it = flowMap.find(srcLeaf->gid);
-    if (it == flowMap.end()) // new src. Add the dst.
+    if (it == flowMap.end()) // new src. Add the dst. dstName is only used for debugging
       flowMap[srcLeaf->gid].push_back(FlowEntry(dst, numSteps, dstNm));
     else
     {
@@ -534,6 +534,7 @@ BuildFlowMap(const T& endPtsPortal,
       {
         if (entry.dst == dst) //update a found dst
         {
+          //update both numsteps and number of particles
           entry.Update(numSteps);
           found = true;
           break;
