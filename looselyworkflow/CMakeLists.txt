@@ -40,8 +40,11 @@ include_directories(
      ${lcwf_SOURCE_DIR}
 )
 
+find_package(VTKm REQUIRED QUIET)
+set(VTKm_LIBRARIES vtkm::cont vtkm::filter vtkm::source vtkm::vtkmdiympi vtkm::io)
+
 add_executable(tightlyinsitu tightlyinsitu.cpp)
 target_link_libraries(tightlyinsitu thallium MPI::MPI_CXX)
 
-add_executable(looselyinsitu looselyinsitu.cpp)
-target_link_libraries(looselyinsitu thallium MPI::MPI_CXX)
+add_executable(looselyinsitu looselyinsitu.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
+target_link_libraries(looselyinsitu thallium ${VTKm_LIBRARIES} MPI::MPI_CXX)
