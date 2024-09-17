@@ -40,9 +40,6 @@ tl::mutex vtkmDataSetsMutex;
 std::vector<vtkm::cont::DataSet> vtkmDataSets;
 tl::engine *globalServerEnginePtr = nullptr;
 
-tl::mutex timerStartMutex;
-bool timerStart = false;
-
 enum VisOpEnum
 {
     UNDEFINEDOP,
@@ -212,19 +209,11 @@ private:
 
         // create the vtkm data set
         auto partitionedDataSet = vtkm::cont::PartitionedDataSet(vtkmDataSets);
-
+        
         vtkm::filter::flow::GetTracer().Get()->Init(globalRank);
-
-        // vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
-        if (timerStart == false)
-        {
-            vtkm::filter::flow::GetTracer().Get()->StartTimer();
-            timerStartMutex.lock();
-            timerStart == true;
-            timerStartMutex.unlock();
-
-        }
-        // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
+        vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
+        vtkm::filter::flow::GetTracer().Get()->StartTimer();
+        //vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
 
         // Only testing particle advection now
         std::string seedMethod = "domainrandom";
@@ -244,15 +233,7 @@ private:
 
         // ouptut trace
         // vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank);
-        if (timerStart == true)
-        {
-            timerStartMutex.lock();
-            vtkm::filter::flow::GetTracer().Get()->StopTimer();
-            timerStart == false;
-            timerStartMutex.unlock();
-
-        }
-        vtkm::filter::flow::GetTracer().Get()->Finalize();
+        vtkm::filter::flow::GetTracer().Get()->StopTimer();
 
         // clear the data set after each filter running
         // otherwise, the dataset size will increase forever
@@ -398,6 +379,9 @@ int main(int argc, char **argv)
     // vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
     vtkm::cont::Timer timer{initResult.Device};
     GlobalDeviceID = initResult.Device;
+    if(globalRank==0){
+        std::cout << "vtkm device is " << initResult.Device.GetName() <<  std::endl;
+    }
     if (argc != 3)
     {
         std::cerr << "looselyinsitu <protocol> <log level>" << std::endl;
@@ -456,7 +440,9 @@ int main(int argc, char **argv)
     }
 
     myEngine.wait_for_finalize();
-
+    
+    //we only need to finalize the tracer at the end of the program
+    vtkm::filter::flow::GetTracer().Get()->Finalize();
     std::cout << "server close" << std::endl;
     MPI_Finalize();
     return 0;
