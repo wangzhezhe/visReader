@@ -9,6 +9,7 @@
 // vtkm header
 #include <vtkm/cont/Initialize.h>
 #include <vtkm/cont/Timer.h>
+#include <vtkm/cont/DataSetBuilderUniform.h>
 
 // padvection filter
 #include "../AssignStrategy.hpp"
@@ -16,15 +17,31 @@
 #include "../filter.hpp"
 #include <vtkm/filter/flow/Tracer.h>
 
+// vtk data
+#include <vtkCommunicator.h>
+#include <vtkCharArray.h>
+#include <vtkDataArray.h>
+#include <vtkPointData.h>
+#include <vtkStructuredPoints.h>
+
 // The loosely part can be a visualization service
 // it need to be started when all the tightly insitu (client) is well started
 namespace tl = thallium;
 
 int globalRank = 0;
 int totalRanks = 0;
+
 std::vector<std::string> globalAddrList;
 // TODO there should be a switch betweem vtkm data sets 1 and 2
+// duing filtering operation, the vtkmDataSets is occupied by filter
+// and can not be occupied by another set of data staging operation.
+bool occupyingOne = false;
+tl::mutex vtkmDataSetsMutex;
 std::vector<vtkm::cont::DataSet> vtkmDataSets;
+tl::engine *globalServerEnginePtr = nullptr;
+
+tl::mutex timerStartMutex;
+bool timerStart = false;
 
 enum VisOpEnum
 {
@@ -39,7 +56,43 @@ VisOpEnum myVisualizationOperation = ADVECT;
 // serial is 1
 vtkm::cont::DeviceAdapterId GlobalDeviceID = vtkm::cont::make_DeviceAdapterId(1);
 
-class my_sum_provider : public tl::provider<my_sum_provider>
+vtkm::cont::DataSet ConvertToVtkmDS(vtkStructuredPoints *outDataSet, std::string filedName)
+{
+    int dimensions[3];
+    outDataSet->GetDimensions(dimensions);
+    double spacijk[3];
+    outDataSet->GetSpacing(spacijk);
+    double origin[3];
+    outDataSet->GetOrigin(origin);
+
+    int arrayNum = outDataSet->GetPointData()->GetNumberOfArrays();
+    vtkDataArray *dataArray = outDataSet->GetPointData()->GetArray(filedName.c_str());
+
+    vtkIdType numTuples = dataArray->GetNumberOfTuples();
+
+    vtkm::cont::DataSetBuilderUniform dsb;
+    vtkm::Id3 vtkmDimensions(dimensions[0], dimensions[1], dimensions[2]);
+    vtkm::Vec<double, 3> vtkmSpacing(spacijk[0], spacijk[1], spacijk[2]);
+    vtkm::Vec<double, 3> vtkmOrigin(origin[0], origin[1], origin[2]);
+
+    vtkm::cont::DataSet ds = dsb.Create(vtkmDimensions, vtkmOrigin, vtkmSpacing);
+
+    // adding vector field into vtkm data set from vtkDoubleArray
+    vtkm::cont::ArrayHandle<vtkm::Vec3f> vecField;
+    vecField.Allocate(numTuples);
+    auto wPortal = vecField.WritePortal();
+
+    std::array<double, 3> tuple;
+    for (vtkIdType t = 0; t < numTuples; ++t)
+    {
+        dataArray->GetTuple(t, tuple.data());
+        wPortal.Set(vtkm::Id(t), vtkm::Vec<double, 3>(tuple[0], tuple[1], tuple[2]));
+    }
+    ds.AddPointField("velocity", vecField);
+    return ds;
+}
+
+class my_provider : public tl::provider<my_provider>
 {
 
 private:
@@ -53,8 +106,10 @@ private:
     tl::auto_remote_procedure m_getaddrlist_rpc;
 
     // call the vtkm particle advection filter
-    tl::auto_remote_procedure m_stage_rpc;
+    tl::auto_remote_procedure m_stagetest_rpc;
     tl::auto_remote_procedure m_runfilter_rpc;
+
+    tl::auto_remote_procedure m_stage_rpc;
 
     void prod(const tl::request &req, int x, int y)
     {
@@ -85,7 +140,7 @@ private:
     }
 
     // TODO, udpate it to the mode that recieve data from the api call
-    void stage(const tl::request &req)
+    void stagetest(const tl::request &req)
     {
         // load the data, this will be replaced by data transfer function
         // the code here is for temporary testing
@@ -103,6 +158,53 @@ private:
         req.respond(0);
     }
 
+    void stage(const tl::request &req, std::size_t &stgDataSize, tl::bulk &dataBulk)
+    {
+        // this will be called multiple times
+        // pull the buffer
+        // unmarshal back to vtk data, convert to vtkm data
+        // add atomic operation for vtkmDataSets
+        size_t transferSize = stgDataSize;
+
+        auto buffer = vtkSmartPointer<vtkCharArray>::New();
+        buffer->SetNumberOfComponents(1);
+        buffer->SetNumberOfTuples(transferSize);
+
+        // get the transfered data by exposing the mem space
+        std::vector<std::pair<void *, std::size_t>> segments(1);
+        segments[0].first = (void *)(buffer->GetPointer(0));
+        segments[0].second = transferSize;
+        spdlog::debug("rank {} recv size {}", globalRank, transferSize);
+
+        // transfer data
+        tl::bulk currentBulk = globalServerEnginePtr->expose(segments, tl::bulk_mode::write_only);
+
+        tl::endpoint ep = req.get_endpoint();
+        // pull the data onto the server
+        dataBulk.on(ep) >> currentBulk;
+
+        // unmarshal back to vtk data
+        vtkSmartPointer<vtkDataObject> recvbj = vtkCommunicator::UnMarshalDataObject(buffer);
+
+        // Assuming we know the dedicated results
+        vtkStructuredPoints *outDataSet = vtkStructuredPoints::SafeDownCast(recvbj);
+
+        // std::cout << "\n---Unmarshal object:" << std::endl;
+        // outDataSet->PrintSelf(std::cout, vtkIndent(5));
+        // converting to vtkm data set
+        vtkm::cont::DataSet vtkmInDs = ConvertToVtkmDS(outDataSet, "mesh_mesh/velocity");
+        // vtkmInDs.PrintSummary(std::cout);
+
+        // using atomic operation to add the data into the vector
+        vtkmDataSetsMutex.lock();
+        vtkmDataSets.push_back(vtkmInDs);
+        vtkmDataSetsMutex.unlock();
+
+        std::cout << "size of vtkmDataSets is " << vtkmDataSets.size() << std::endl;
+
+        req.respond(0);
+    }
+
     void runfilter(const tl::request &req, int cycle, std::string fieldToOperateOn)
     {
         // run the particle advection filter
@@ -113,9 +215,16 @@ private:
 
         vtkm::filter::flow::GetTracer().Get()->Init(globalRank);
 
-        vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
-        vtkm::filter::flow::GetTracer().Get()->StartTimer();
-        vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
+        // vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
+        if (timerStart == false)
+        {
+            vtkm::filter::flow::GetTracer().Get()->StartTimer();
+            timerStartMutex.lock();
+            timerStart == true;
+            timerStartMutex.unlock();
+
+        }
+        // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
 
         // Only testing particle advection now
         std::string seedMethod = "domainrandom";
@@ -123,32 +232,45 @@ private:
         bool recordTrajectories = false;
         bool outputResults = false;
         bool outputSeeds = false;
-        
-        //TODO, adding parameters to support more config
+
+        // TODO, adding parameters to support more config
         FILTER::CommStrategy == "async";
-        //other parameters need to be set from outside or client
-        //numsteps, stepsize, number of seeds
+        // other parameters need to be set from outside or client
+        // numsteps, stepsize, number of seeds
 
         MPI_Barrier(MPI_COMM_WORLD);
         FILTER::runAdvection(partitionedDataSet, globalRank, totalRanks, cycle, seedMethod, fieldToOperateOn, true, recordTrajectories, outputResults, outputSeeds, GlobalDeviceID);
-        vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
+        // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
 
         // ouptut trace
-        vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank);
+        // vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank);
+        if (timerStart == true)
+        {
+            timerStartMutex.lock();
+            vtkm::filter::flow::GetTracer().Get()->StopTimer();
+            timerStart == false;
+            timerStartMutex.unlock();
+
+        }
         vtkm::filter::flow::GetTracer().Get()->Finalize();
+
+        // clear the data set after each filter running
+        // otherwise, the dataset size will increase forever
+        vtkmDataSets.clear();
         req.respond(0);
     }
 
 public:
-    my_sum_provider(const tl::engine &e, uint16_t provider_id)
-        : tl::provider<my_sum_provider>(e, provider_id, "myprovider"),
-          m_prod_rpc{define("prod", &my_sum_provider::prod)},
-          m_sum_rpc{define("sum", &my_sum_provider::sum)},
-          m_hello_rpc{define("hello", &my_sum_provider::hello).disable_response()},
-          m_print_rpc{define("print", &my_sum_provider::print, tl::ignore_return_value())},
-          m_getaddrlist_rpc{define("getaddrlist", &my_sum_provider::getaddrlist)},
-          m_stage_rpc{define("stage", &my_sum_provider::stage)},
-          m_runfilter_rpc{define("runfilter", &my_sum_provider::runfilter)}
+    my_provider(const tl::engine &e, uint16_t provider_id)
+        : tl::provider<my_provider>(e, provider_id, "myprovider"),
+          m_prod_rpc{define("prod", &my_provider::prod)},
+          m_sum_rpc{define("sum", &my_provider::sum)},
+          m_hello_rpc{define("hello", &my_provider::hello).disable_response()},
+          m_print_rpc{define("print", &my_provider::print, tl::ignore_return_value())},
+          m_getaddrlist_rpc{define("getaddrlist", &my_provider::getaddrlist)},
+          m_stagetest_rpc{define("stagetest", &my_provider::stagetest)},
+          m_runfilter_rpc{define("runfilter", &my_provider::runfilter)},
+          m_stage_rpc{define("stage", &my_provider::stage)}
     {
     }
 };
@@ -296,6 +418,8 @@ int main(int argc, char **argv)
     }
 
     tl::engine myEngine(protocol, THALLIUM_SERVER_MODE);
+    globalServerEnginePtr = &myEngine;
+
     std::string selfAddr = myEngine.self();
     std::cout << "Server running at address " << selfAddr
               << " with provider id " << provider_id << std::endl;
@@ -308,7 +432,7 @@ int main(int argc, char **argv)
     }
 
     // start provider
-    auto provider = new my_sum_provider(myEngine, provider_id);
+    auto provider = new my_provider(myEngine, provider_id);
     myEngine.push_finalize_callback(provider, [provider]()
                                     { delete provider; });
 

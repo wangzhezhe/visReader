@@ -11,7 +11,6 @@ find_package(MPI REQUIRED)
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
      "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-
 # link shared lib with full rpath
 set (CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -40,11 +39,27 @@ include_directories(
      ${lcwf_SOURCE_DIR}
 )
 
+# find vtk data
+find_package(VTK COMPONENTS
+IOLegacy
+IOXML
+IOImage
+CommonDataModel
+FiltersSources
+FiltersCore
+ParallelMPI
+)
+
+
+
 find_package(VTKm REQUIRED QUIET)
 set(VTKm_LIBRARIES vtkm::cont vtkm::filter vtkm::source vtkm::vtkmdiympi vtkm::io)
 
-add_executable(tightlyinsitu tightlyinsitu.cpp)
-target_link_libraries(tightlyinsitu thallium MPI::MPI_CXX)
+add_executable(tightlyinsitu_we tightlyinsitu_we.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
+target_link_libraries(tightlyinsitu_we thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
+
+add_executable(tightlyinsitu_pa tightlyinsitu_pa.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
+target_link_libraries(tightlyinsitu_pa thallium ${VTKm_LIBRARIES} MPI::MPI_CXX)
 
 add_executable(looselyinsitu looselyinsitu.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
-target_link_libraries(looselyinsitu thallium ${VTKm_LIBRARIES} MPI::MPI_CXX)
+target_link_libraries(looselyinsitu thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)

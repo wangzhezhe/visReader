@@ -214,7 +214,8 @@ void LoadData(const std::string &visitfileName,
       std::string vtkFile = dir + "/" + buff;
       vtkm::io::VTKDataSetReader reader(vtkFile);
       ds = reader.ReadDataSet();
-
+      //Is this necessary?
+      /*
       std::vector<vtkm::Vec3f> vecs = {{1, 0, 0}, {0, 1, 0}, {1, 1, 0}};
       std::vector<std::string> vecNms = {"vecX", "vecY", "vecXY"};
       for (std::size_t i = 0; i < vecs.size(); i++)
@@ -222,6 +223,7 @@ void LoadData(const std::string &visitfileName,
         auto vecField = CreateConstantVectorField(ds.GetNumberOfPoints(), vecs[i]);
         ds.AddPointField(vecNms[i], vecField);
       }
+      */
       if (FILTER::GLOBAL_BLOCK_MANUALID)
       {
         // record block ids
