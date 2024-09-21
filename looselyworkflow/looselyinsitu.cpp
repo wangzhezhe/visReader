@@ -228,6 +228,16 @@ private:
         // numsteps, stepsize, number of seeds
 
         MPI_Barrier(MPI_COMM_WORLD);
+        FILTER::CommStrategy == "async_probe";
+        FILTER::GLOBAL_ADVECT_NUM_STEPS = 2000;
+        FILTER::GLOBAL_ADVECT_STEP_SIZE=0.001;
+        FILTER::GLOBAL_ADVECT_NUM_SEEDS=1000; //per domain
+        FILTER::G_xMin = 0.01;
+        FILTER::G_xMax = 0.99;
+        FILTER::G_yMin = 0.01;
+        FILTER::G_yMax = 0.99;
+        FILTER::G_zMin = 0.01;
+        FILTER::G_zMax = 0.99;
         FILTER::runAdvection(partitionedDataSet, globalRank, totalRanks, cycle, seedMethod, fieldToOperateOn, true, recordTrajectories, outputResults, outputSeeds, GlobalDeviceID);
         // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
 

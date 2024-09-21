@@ -56,17 +56,18 @@ int main(int argc, char **argv)
   vtkm::cont::Timer timer{initResult.Device};
   timer.Start();
 
-    if (argc != 3)
+    if (argc != 4)
     {
-        std::cerr << "Usage: " << argv[0] << " <dataset dir> <sleep time for sim>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <dataset dir> <sleep time for sim> <#cycle>" << std::endl;
         exit(0);
     }
 
     // let rank 0 to detect the address of vis server
     std::string dataset_dir_suffix = argv[1];
     int sim_sleep_time=std::stoi(argv[2]);
+    int total_cycle=std::stoi(argv[3]);
 
-    for (int cycle = 0; cycle < 1; cycle++)
+    for (int cycle = 0; cycle < total_cycle; cycle++)
     {
         //TODO add time tracer       
         if(globalRank==0){
