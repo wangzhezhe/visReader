@@ -56,16 +56,17 @@ int main(int argc, char **argv)
   vtkm::cont::Timer timer{initResult.Device};
   timer.Start();
 
-    if (argc != 4)
+    if (argc != 5)
     {
-        std::cerr << "Usage: " << argv[0] << " <dataset dir> <sleep time for sim> <#cycle>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <prefix dir> <sleep time for sim> <#cycle> <suffix dir>" << std::endl;
         exit(0);
     }
 
     // let rank 0 to detect the address of vis server
-    std::string dataset_dir_suffix = argv[1];
+    std::string dataset_dir_prefix = argv[1];
     int sim_sleep_time=std::stoi(argv[2]);
     int total_cycle=std::stoi(argv[3]);
+    std::string file_suffix = argv[4];
 
     for (int cycle = 0; cycle < total_cycle; cycle++)
     {
@@ -80,7 +81,7 @@ int main(int argc, char **argv)
         // load the vtk data set for current cycle
         std::vector<vtkm::cont::DataSet> vtkmDataSets;
         std::vector<int> blockIDList;
-        std::string visitfileName = dataset_dir_suffix+std::to_string(cycle)+".2_2_2.128_128_128.visit";
+        std::string visitfileName = dataset_dir_prefix+std::to_string(cycle)+file_suffix;
         AssignStrategy assignStrategy = AssignStrategy::ROUNDROUBIN;
         std::string assignFileName = ""; // do not use it for round roubin
         // load the data from file
