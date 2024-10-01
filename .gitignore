@@ -1,2 +1,4 @@
 input.csv
 build
+CMakeCache.txt
+CMakeFiles/

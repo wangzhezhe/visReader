@@ -196,8 +196,10 @@ private:
         vtkmDataSetsMutex.lock();
         vtkmDataSets.push_back(vtkmInDs);
         vtkmDataSetsMutex.unlock();
-
-        std::cout << "size of vtkmDataSets is " << vtkmDataSets.size() << std::endl;
+        
+        if(globalRank==0){
+            spdlog::debug("size of vtkmDataSets is  {}", vtkmDataSets.size());
+        }
 
         req.respond(0);
     }

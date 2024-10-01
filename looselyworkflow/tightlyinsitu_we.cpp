@@ -112,17 +112,21 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &globalRank);
     MPI_Comm_size(MPI_COMM_WORLD, &totalRanks);
 
-    if (argc != 5)
+    if (argc != 7)
     {
-        std::cerr << "Usage: " << argv[0] << " <protocol> <masterconf> <dataset_suffix> <#cycle>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <protocol> <masterconf> <dataset_prefix> <dataset_suffix> <#cycle> <simTime>" << std::endl;
         exit(0);
     }
 
     // let rank 0 to detect the address of vis server
     std::string protocol = argv[1];
     std::string masterconf = argv[2];
-    std::string dataset_dir_suffix = argv[3];
-    int numCycles = std::stoi(argv[4]);
+    std::string dataset_dir_prefix = argv[3];
+    std::string dataset_dir_suffix = argv[4];
+    int numCycles = std::stoi(argv[5]);
+    int simTime = std::stoi(argv[6]);
+
+    //typical suffix can be ".2_2_2.128_128_128.visit"
 
     std::string masterAddr = loadMasterAddr(masterconf);
 
@@ -176,7 +180,7 @@ int main(int argc, char **argv)
         // make sure #data blocks equals to #ranks
         std::vector<vtkm::cont::DataSet> vtkmDataSets;
         std::vector<int> blockIDList;
-        std::string visitfileName = dataset_dir_suffix + std::to_string(c) + ".2_2_2.128_128_128.visit";
+        std::string visitfileName = dataset_dir_prefix + std::to_string(c) + ".2_2_2.128_128_128.visit";
         AssignStrategy assignStrategy = AssignStrategy::ROUNDROUBIN;
         std::string assignFileName = ""; // do not use it for round roubin
         // load the data to vtk file
@@ -186,7 +190,7 @@ int main(int argc, char **argv)
         // staging request is ok, start to sleep
         // if there is existing staging, we are overlapping the
         // staging and the simulation here
-        sleep(5);
+        sleep(simTime);
 
         // make sure all response is ok
         for (int i = 0; i < reqlist.size(); i++)
