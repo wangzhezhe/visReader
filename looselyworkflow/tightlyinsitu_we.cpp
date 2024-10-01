@@ -180,7 +180,7 @@ int main(int argc, char **argv)
         // make sure #data blocks equals to #ranks
         std::vector<vtkm::cont::DataSet> vtkmDataSets;
         std::vector<int> blockIDList;
-        std::string visitfileName = dataset_dir_prefix + std::to_string(c) + ".2_2_2.128_128_128.visit";
+        std::string visitfileName = dataset_dir_prefix + std::to_string(c) + dataset_dir_suffix;
         AssignStrategy assignStrategy = AssignStrategy::ROUNDROUBIN;
         std::string assignFileName = ""; // do not use it for round roubin
         // load the data to vtk file
