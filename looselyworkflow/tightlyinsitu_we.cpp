@@ -37,7 +37,9 @@ vtkSmartPointer<vtkDataSet> LoadDataIntoVTK(const std::string &visitfileName)
     std::string buff;
     std::ifstream is;
     is.open(visitfileName);
-    std::cout << "Opening: " << visitfileName << std::endl;
+    if(globalRank==0){
+        std::cout << "Opening: " << visitfileName << std::endl;
+    }
     if (!is)
     {
         std::cout << "File not found! : " << visitfileName << std::endl;
@@ -71,9 +73,9 @@ vtkSmartPointer<vtkDataSet> LoadDataIntoVTK(const std::string &visitfileName)
         std::getline(is, buff);
         if (i == globalRank)
         {
-            std::cout << "rank " << globalRank << " assign blockid " << i << std::endl;
+            //std::cout << "rank " << globalRank << " assign blockid " << i << std::endl;
             std::string vtkFilePath = dir + "/" + buff;
-            std::cout << "rank " << globalRank << " open file " << vtkFilePath << std::endl;
+            //std::cout << "rank " << globalRank << " open file " << vtkFilePath << std::endl;
             vtkSmartPointer<vtkDataSetReader> reader =
                 vtkSmartPointer<vtkDataSetReader>::New();
             reader->SetFileName(vtkFilePath.c_str());
@@ -108,9 +110,15 @@ int main(int argc, char **argv)
 {
 
     MPI_Init(NULL, NULL);
-
     MPI_Comm_rank(MPI_COMM_WORLD, &globalRank);
     MPI_Comm_size(MPI_COMM_WORLD, &totalRanks);
+
+    // set necessary vtkm arguments and timer information
+    vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
+      argc, argv, vtkm::cont::InitializeOptions::DefaultAnyDevice);
+    // vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
+    vtkm::cont::Timer timer{initResult.Device};
+    timer.Start();
 
     if (argc != 7)
     {
@@ -178,6 +186,9 @@ int main(int argc, char **argv)
     {
         // load the data
         // make sure #data blocks equals to #ranks
+        if(globalRank==0){
+            std::cout << "---start to process cycle " << c  << " ---"<< std::endl;
+        }
         std::vector<vtkm::cont::DataSet> vtkmDataSets;
         std::vector<int> blockIDList;
         std::string visitfileName = dataset_dir_prefix + std::to_string(c) + dataset_dir_suffix;
@@ -186,16 +197,21 @@ int main(int argc, char **argv)
         // load the data to vtk file
         vtkSmartPointer<vtkDataSet> inData = LoadDataIntoVTK(visitfileName);
         // there is only one block per rank
-
+        if(globalRank==0){
+            std::cout << "ok to load the data, start sim"<< std::endl;
+        }
         // staging request is ok, start to sleep
         // if there is existing staging, we are overlapping the
         // staging and the simulation here
         sleep(simTime);
 
+        if(globalRank==0){
+            std::cout << "ok for sim, send stage api"<< std::endl;
+        }
         // make sure all response is ok
         for (int i = 0; i < reqlist.size(); i++)
         {
-            std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+            //std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
             int status = reqlist[i].wait();
             if (status != 0)
             {
@@ -219,7 +235,7 @@ int main(int argc, char **argv)
         int numServers = globalAddrList.size();
         int serverID = globalRank % numServers;
 
-        std::cout << "rank " << globalRank << " send data to server with id " << serverID << std::endl;
+        //std::cout << "rank " << globalRank << " send data to server with id " << serverID << std::endl;
 
         // send the marshaled object to remote server
         // using bulk transfer
@@ -288,6 +304,11 @@ int main(int argc, char **argv)
     }
 
     std::cout << "client " << globalRank << " close" << std::endl;
+    //TODO, notify serer to close the connection
+    timer.Stop();
+    if(globalRank==0){
+        std::cout << "whole workflow exec time " << timer.GetElapsedTime() << " seconds" << std::endl;
+    }    
     MPI_Finalize();
     return 0;
 }
