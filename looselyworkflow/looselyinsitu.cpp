@@ -107,6 +107,7 @@ private:
     tl::auto_remote_procedure m_runfilter_rpc;
 
     tl::auto_remote_procedure m_stage_rpc;
+    tl::auto_remote_procedure m_finalize_rpc;
 
     void prod(const tl::request &req, int x, int y)
     {
@@ -253,6 +254,11 @@ private:
         req.respond(0);
     }
 
+    void finalize(const tl::request &req){
+        std::cout << "recv finalize api call" << std::endl;
+        globalServerEnginePtr->finalize();
+        req.respond(0);
+    }
 public:
     my_provider(const tl::engine &e, uint16_t provider_id)
         : tl::provider<my_provider>(e, provider_id, "myprovider"),
@@ -263,7 +269,8 @@ public:
           m_getaddrlist_rpc{define("getaddrlist", &my_provider::getaddrlist)},
           m_stagetest_rpc{define("stagetest", &my_provider::stagetest)},
           m_runfilter_rpc{define("runfilter", &my_provider::runfilter)},
-          m_stage_rpc{define("stage", &my_provider::stage)}
+          m_stage_rpc{define("stage", &my_provider::stage)},
+          m_finalize_rpc{define("finalize", &my_provider::finalize)}
     {
     }
 };
@@ -391,6 +398,7 @@ int main(int argc, char **argv)
     // vtkm::cont::SetStderrLogLevel(vtkm::cont::LogLevel::Perf);
     vtkm::cont::Timer timer{initResult.Device};
     GlobalDeviceID = initResult.Device;
+    timer.Start();
     if(globalRank==0){
         std::cout << "vtkm device is " << initResult.Device.GetName() <<  std::endl;
     }
@@ -456,6 +464,10 @@ int main(int argc, char **argv)
     //we only need to finalize the tracer at the end of the program
     vtkm::filter::flow::GetTracer().Get()->Finalize();
     std::cout << "server close" << std::endl;
+    timer.Stop();
+    if(globalRank==0){
+        std::cout << "server running time is:" << timer.GetElapsedTime() << std::endl;
+    }
     MPI_Finalize();
     return 0;
 }
