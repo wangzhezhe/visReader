@@ -245,7 +245,8 @@ private:
         // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
 
         // ouptut trace
-        // vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank);
+        std::string traceDirName = "tracelog_cycle"+std::to_string(cycle);
+        vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank,traceDirName);
         vtkm::filter::flow::GetTracer().Get()->StopTimer();
 
         // clear the data set after each filter running

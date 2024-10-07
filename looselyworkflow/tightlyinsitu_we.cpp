@@ -302,7 +302,7 @@ int main(int argc, char **argv)
                 tl::provider_handle phVisServer(addrEndPoint, provider_id);
                 // use async call
                 std::string field = "velocity";
-                auto response = runfilter.on(phVisServer).async(0, field);
+                auto response = runfilter.on(phVisServer).async(c, field);
                 reqlist.push_back(std::move(response));
             }
         }
