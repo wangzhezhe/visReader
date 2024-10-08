@@ -55,8 +55,8 @@ ParallelMPI
 find_package(VTKm REQUIRED QUIET)
 set(VTKm_LIBRARIES vtkm::cont vtkm::filter vtkm::source vtkm::vtkmdiympi vtkm::io)
 
-add_executable(tightlyinsitu_we tightlyinsitu_we.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
-target_link_libraries(tightlyinsitu_we thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
+add_executable(tightlyinsitu_rrb tightlyinsitu_rrb.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
+target_link_libraries(tightlyinsitu_rrb thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
 
 add_executable(tightlyinsitu_pa tightlyinsitu_pa.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
 target_link_libraries(tightlyinsitu_pa thallium ${VTKm_LIBRARIES} MPI::MPI_CXX)
