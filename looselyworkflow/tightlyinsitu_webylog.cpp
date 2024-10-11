@@ -1,5 +1,7 @@
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
+
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium.hpp>
@@ -106,6 +108,20 @@ std::string loadMasterAddr(std::string masterConfigFile)
     return content;
 }
 
+bool dirExists(const std::string &path)
+{
+    struct stat info;
+    if (stat(path.c_str(), &info) != 0)
+    {
+        return false; // Cannot access path
+    }
+    else if (info.st_mode & S_IFDIR)
+    {
+        return true; // Path is a directory
+    }
+    return false; // Path exists but is not a directory
+}
+
 // The tightly part should be like a client and send data into the server(loosely part)
 int main(int argc, char **argv)
 {
@@ -195,8 +211,8 @@ int main(int argc, char **argv)
         std::vector<vtkm::cont::DataSet> vtkmDataSets;
         std::vector<int> blockIDList;
         std::string visitfileName = dataset_dir_prefix + std::to_string(c) + dataset_dir_suffix;
-        AssignStrategy assignStrategy = AssignStrategy::ROUNDROUBIN;
         std::string assignFileName = ""; // do not use it for round roubin
+
         // load the data to vtk file
         vtkSmartPointer<vtkDataSet> inData = LoadDataIntoVTK(visitfileName);
         // there is only one block per rank
@@ -238,27 +254,96 @@ int main(int argc, char **argv)
         // buffer->Print(std::cout);
         //  consider sending the vtk data to the remote server
         int numServers = globalAddrList.size();
-        int serverID = globalRank % numServers;
 
-        // std::cout << "rank " << globalRank << " send data to server with id " << serverID << std::endl;
-
-        // send the marshaled object to remote server
-        // using bulk transfer
-
-        tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverID]);
-        tl::provider_handle stage_ph(serverEndpoint, provider_id);
-
-        std::vector<std::pair<void *, std::size_t>> stgsegments(1);
-        stgsegments[0].first = buffer->GetPointer(0);
-        std::size_t sizeofstgArray = buffer->GetNumberOfTuples() * sizeof(char);
-        stgsegments[0].second = sizeofstgArray;
-
-        tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
-        auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk);
-        int status = stgResponse.wait();
-        if (status != 0)
+        // This is using the previous log to find server id
+        // use new server id when this part is ready
+        std::vector<int> serverIDList;
+        if (c == 0)
         {
-            std::cout << "failed to stage the data for rank " << globalRank << std::endl;
+            // using rrb
+            // there is only one server id for each block
+            serverIDList.push_back(globalRank % numServers);
+        }
+        else
+        {
+            assignFileName = "assign_options.config";
+            // create assignment plan based on python call (todo, move to cpp in future)
+            if (globalRank == 0)
+            {
+                // check existing of tracing log
+                std::string traceDirName = "tracelog_cycle" + std::to_string(c - 1);
+                if (dirExists(traceDirName) == false)
+                {
+                    throw std::runtime_error("Failed to find trace log dir:" + traceDirName);
+                }
+
+                // create assignment plan
+                // parse the file
+                // two loosely server, 8 ranks, three stages
+                int totalBlocks = totalRanks;
+                std::string command1 = "python3 parser_block_workloads.py ./tracelog_cycle" + std::to_string(c - 1) + "/ " + std::to_string(numServers) + " " + std::to_string(totalBlocks) + " 3";
+                std::cout << "execute command1: " << command1 << std::endl;
+                int result = system(command1.c_str()); // Replace "ls -l" with your command
+                if (result != 0)
+                {
+                    throw std::runtime_error("Failed to execute command1");
+                }
+                std::string command2 = "python3 generate_assignment_actual_bpacking_dup_capacity_vector.py " + std::to_string(totalBlocks) + " " + std::to_string(numServers) + " ./adv_step_stages_list.json";
+                std::cout << "execute command2: " << command2 << std::endl;
+                result = system(command2.c_str()); // Replace "ls -l" with your command
+                if (result != 0)
+                {
+                    throw std::runtime_error("Failed to execute command2");
+                }
+            }
+
+            // load results from assignFileName to know
+            // which client need to send data to which server
+            std::string line;
+            std::ifstream infile(assignFileName.c_str());
+            int serverIDTemp = 0;
+            // assuming rankid is block id
+            std::string global_rank_str = std::to_string(globalRank);
+            while (std::getline(infile, line))
+            {
+                if (globalRank == 0)
+                {
+                    std::cout << "get line " << line << std::endl;
+                }
+                // TODO parse the line and extract the server id
+                // if serverID is in line
+                // what about the duplication case?
+                if (line.find(global_rank_str) != std::string::npos)
+                {
+                    serverIDList.push_back(serverIDTemp);
+                }
+                serverIDTemp++;
+            }
+        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        // go through all servers
+        // only give to first one
+        //for (int s = 0; s < 1; s++)
+        for (int s = 0; s < serverIDList.size(); s++)
+        {
+            std::cout << "rank " << globalRank << " send data to server with id " << serverIDList[s] << std::endl;
+            tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
+            tl::provider_handle stage_ph(serverEndpoint, provider_id);
+
+            std::vector<std::pair<void *, std::size_t>> stgsegments(1);
+            stgsegments[0].first = buffer->GetPointer(0);
+            std::size_t sizeofstgArray = buffer->GetNumberOfTuples() * sizeof(char);
+            stgsegments[0].second = sizeofstgArray;
+
+            tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
+            auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
+            int status = stgResponse.wait();
+            if (status != 0)
+            {
+                std::cout << "failed to stage the data for rank " << globalRank << std::endl;
+            }
         }
 
         // when sending ok for all ranks

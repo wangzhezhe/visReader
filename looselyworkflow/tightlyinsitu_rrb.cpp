@@ -254,7 +254,8 @@ int main(int argc, char **argv)
         stgsegments[0].second = sizeofstgArray;
 
         tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
-        auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk);
+        //the last parameter is block id
+        auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
         int status = stgResponse.wait();
         if (status != 0)
         {

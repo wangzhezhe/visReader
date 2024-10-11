@@ -40,6 +40,8 @@ tl::mutex vtkmDataSetsMutex;
 std::vector<vtkm::cont::DataSet> vtkmDataSets;
 tl::engine *globalServerEnginePtr = nullptr;
 
+std::vector<vtkm::Id> local_blockids;
+
 enum VisOpEnum
 {
     UNDEFINEDOP,
@@ -156,7 +158,7 @@ private:
         req.respond(0);
     }
 
-    void stage(const tl::request &req, std::size_t &stgDataSize, tl::bulk &dataBulk)
+    void stage(const tl::request &req, std::size_t &stgDataSize, tl::bulk &dataBulk, int blockid)
     {
         // this will be called multiple times
         // pull the buffer
@@ -197,11 +199,14 @@ private:
         vtkmDataSetsMutex.lock();
         vtkmDataSets.push_back(vtkmInDs);
         vtkmDataSetsMutex.unlock();
-        
-        if(globalRank==0){
+
+        if (globalRank == 0)
+        {
             spdlog::debug("size of vtkmDataSets is  {}", vtkmDataSets.size());
         }
 
+        // insert corresponding blockid
+        local_blockids.push_back(blockid);
         req.respond(0);
     }
 
@@ -212,11 +217,12 @@ private:
 
         // create the vtkm data set
         auto partitionedDataSet = vtkm::cont::PartitionedDataSet(vtkmDataSets);
-        
+
         vtkm::filter::flow::GetTracer().Get()->Init(globalRank);
-        vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
         vtkm::filter::flow::GetTracer().Get()->StartTimer();
-        //vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
+        // reset cycle before running the filter
+        vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(cycle);
+        vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterStart");
 
         // Only testing particle advection now
         std::string seedMethod = "domainrandom";
@@ -225,41 +231,56 @@ private:
         bool outputResults = false;
         bool outputSeeds = false;
 
-        // TODO, adding parameters to support more config
-        FILTER::CommStrategy == "async";
-        // other parameters need to be set from outside or client
-        // numsteps, stepsize, number of seeds
-
         MPI_Barrier(MPI_COMM_WORLD);
         FILTER::CommStrategy == "async_probe";
         FILTER::GLOBAL_ADVECT_NUM_STEPS = 2000;
-        FILTER::GLOBAL_ADVECT_STEP_SIZE=0.001;
-        FILTER::GLOBAL_ADVECT_NUM_SEEDS=1000; //per domain
+        FILTER::GLOBAL_ADVECT_STEP_SIZE = 0.001;
+        FILTER::GLOBAL_ADVECT_NUM_SEEDS = 1000; // per domain
         FILTER::G_xMin = 0.01;
         FILTER::G_xMax = 0.99;
         FILTER::G_yMin = 0.01;
         FILTER::G_yMax = 0.99;
         FILTER::G_zMin = 0.01;
         FILTER::G_zMax = 0.99;
+        // using manual blockids
+        FILTER::LOCAL_BLOCKIDS = local_blockids;
+        FILTER::GLOBAL_BLOCK_MANUALID = true;
+
+        for (int bid = 0; bid < local_blockids.size(); bid++)
+        {
+            std::cout << "rank " << globalRank << " local_blockid " << local_blockids[bid] << std::endl;
+        }
+
         FILTER::runAdvection(partitionedDataSet, globalRank, totalRanks, cycle, seedMethod, fieldToOperateOn, true, recordTrajectories, outputResults, outputSeeds, GlobalDeviceID);
-        // vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
+        vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
 
         // ouptut trace
-        std::string traceDirName = "tracelog_cycle"+std::to_string(cycle);
-        vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank,traceDirName);
+        std::string traceDirName = "tracelog_cycle" + std::to_string(cycle);
+
+        if (globalRank == 0)
+        {
+            vtkm::filter::flow::GetTracer().Get()->CreateDir(traceDirName);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        vtkm::filter::flow::GetTracer().Get()->OutputBuffer(globalRank, traceDirName);
         vtkm::filter::flow::GetTracer().Get()->StopTimer();
 
         // clear the data set after each filter running
         // otherwise, the dataset size will increase forever
         vtkmDataSets.clear();
+        // clear blockids
+        local_blockids.clear();
         req.respond(0);
     }
 
-    void finalize(const tl::request &req){
+    void finalize(const tl::request &req)
+    {
         std::cout << "recv finalize api call" << std::endl;
         globalServerEnginePtr->finalize();
         req.respond(0);
     }
+
 public:
     my_provider(const tl::engine &e, uint16_t provider_id)
         : tl::provider<my_provider>(e, provider_id, "myprovider"),
@@ -400,8 +421,9 @@ int main(int argc, char **argv)
     vtkm::cont::Timer timer{initResult.Device};
     GlobalDeviceID = initResult.Device;
     timer.Start();
-    if(globalRank==0){
-        std::cout << "vtkm device is " << initResult.Device.GetName() <<  std::endl;
+    if (globalRank == 0)
+    {
+        std::cout << "vtkm device is " << initResult.Device.GetName() << std::endl;
     }
     if (argc != 3)
     {
@@ -461,12 +483,13 @@ int main(int argc, char **argv)
     }
 
     myEngine.wait_for_finalize();
-    
-    //we only need to finalize the tracer at the end of the program
+
+    // we only need to finalize the tracer at the end of the program
     vtkm::filter::flow::GetTracer().Get()->Finalize();
     std::cout << "server close" << std::endl;
     timer.Stop();
-    if(globalRank==0){
+    if (globalRank == 0)
+    {
         std::cout << "server running time is:" << timer.GetElapsedTime() << std::endl;
     }
     MPI_Finalize();

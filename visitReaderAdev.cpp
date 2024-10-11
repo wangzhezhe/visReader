@@ -126,6 +126,10 @@ void runTest(int totalRanks, int myRank, vtkm::cont::DeviceAdapterId &deviceID)
     runCoordinator(myVisualizationOperation, partitionedDataSet, myRank, totalRanks, i, deviceID);
     vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
   }
+  if(myRank==0){
+    vtkm::filter::flow::GetTracer().Get()->CreateDir();
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
   vtkm::filter::flow::GetTracer().Get()->OutputBuffer(myRank);
   vtkm::filter::flow::GetTracer().Get()->Finalize();
 

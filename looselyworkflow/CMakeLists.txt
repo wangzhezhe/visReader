@@ -63,3 +63,6 @@ target_link_libraries(tightlyinsitu_pa thallium ${VTKm_LIBRARIES} MPI::MPI_CXX)
 
 add_executable(looselyinsitu looselyinsitu.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
 target_link_libraries(looselyinsitu thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
+
+add_executable(tightlyinsitu_webylog tightlyinsitu_webylog.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
+target_link_libraries(tightlyinsitu_webylog thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
