@@ -310,13 +310,42 @@ int main(int argc, char **argv)
                 {
                     std::cout << "get line " << line << std::endl;
                 }
+
+                // split the line based on space
+                // put results into a vector
+                std::vector<int> blockids;
+                int leftIdx = 0;
+                int rightIdx = 0;
+                while (rightIdx < line.size())
+                {
+                    while (rightIdx < line.size() && line[rightIdx] != ' ')
+                        rightIdx++;
+                    blockids.push_back(std::stoi(line.substr(leftIdx, rightIdx - leftIdx)));
+                    leftIdx = rightIdx + 1;
+                    rightIdx = rightIdx + 1;
+                }
+
+                // for (int k = 0; k < blockids.size(); k++)
+                // {
+                //     if (globalRank == 0)
+                //     {
+                //         std::cout << "debug block id " << blockids[k] << std::endl;
+                //     }
+                // }
                 // TODO parse the line and extract the server id
                 // if serverID is in line
                 // what about the duplication case?
-                if (line.find(global_rank_str) != std::string::npos)
+                for (int k = 0; k < blockids.size(); k++)
                 {
-                    serverIDList.push_back(serverIDTemp);
+                    if (blockids[k] == globalRank)
+                    {
+                        // find element
+                        //std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
+                        serverIDList.push_back(serverIDTemp);
+                        break;
+                    }
                 }
+                // move to the next line
                 serverIDTemp++;
             }
         }
@@ -325,10 +354,12 @@ int main(int argc, char **argv)
 
         // go through all servers
         // only give to first one
-        //for (int s = 0; s < 1; s++)
+        // for (int s = 0; s < 1; s++)
+        //std::cout << "rank " << globalRank << " server list size " << serverIDList.size() << std::endl;
         for (int s = 0; s < serverIDList.size(); s++)
         {
-            std::cout << "rank " << globalRank << " send data to server with id " << serverIDList[s] << std::endl;
+            
+            std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
             tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
 
