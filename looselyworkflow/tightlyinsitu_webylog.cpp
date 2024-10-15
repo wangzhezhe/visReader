@@ -200,6 +200,12 @@ int main(int argc, char **argv)
     }
 
     std::vector<tl::async_response> reqlist;
+    if (globalRank == 0)
+    {
+        double initTime = timer.GetElapsedTime();
+        std::cout << "Time init ok is: " << initTime << std::endl;
+    }
+
     for (int c = 0; c < numCycles; c++)
     {
         // load the data
@@ -215,11 +221,20 @@ int main(int argc, char **argv)
 
         // load the data to vtk file
         vtkSmartPointer<vtkDataSet> inData = LoadDataIntoVTK(visitfileName);
-        // there is only one block per rank
+        // marshal the vtk data (data transfer)
+        vtkSmartPointer<vtkCharArray> buffer = vtkSmartPointer<vtkCharArray>::New();
+        bool oktoMarshal = vtkCommunicator::MarshalDataObject(inData.GetPointer(), buffer);
+        // buffer->Print(std::cout);
+        if (oktoMarshal == false)
+        {
+            throw std::runtime_error("failed to marshal vtk data");
+        }
+
         if (globalRank == 0)
         {
             std::cout << "ok to load the data, start sim" << std::endl;
         }
+
         // staging request is ok, start to sleep
         // if there is existing staging, we are overlapping the
         // staging and the simulation here
@@ -227,34 +242,14 @@ int main(int argc, char **argv)
 
         if (globalRank == 0)
         {
-            std::cout << "ok for sim, send stage api" << std::endl;
-        }
-        // make sure all response is ok
-        for (int i = 0; i < reqlist.size(); i++)
-        {
-            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
-            int status = reqlist[i].wait();
-            if (status != 0)
-            {
-                std::cout << "failed to call runfilter for some request " << i << std::endl;
-            }
-        }
-        // after this point, the vis opertaion is ok
-        // and the data buffer at server end can be reused.
-
-        // marshal the vtk data (data transfer)
-        vtkSmartPointer<vtkCharArray> buffer = vtkSmartPointer<vtkCharArray>::New();
-        bool oktoMarshal = vtkCommunicator::MarshalDataObject(inData.GetPointer(), buffer);
-
-        if (oktoMarshal == false)
-        {
-            throw std::runtime_error("failed to marshal vtk data");
+            double loadAndSimOk = timer.GetElapsedTime();
+            std::cout << "Time load and sim ok for cycle " << c  << " is: " << loadAndSimOk << std::endl;
         }
 
-        // buffer->Print(std::cout);
+        // we can do some data processing opeartions when waiting the server
+        // such as processing the log etc.
         //  consider sending the vtk data to the remote server
         int numServers = globalAddrList.size();
-
         // This is using the previous log to find server id
         // use new server id when this part is ready
         std::vector<int> serverIDList;
@@ -332,15 +327,12 @@ int main(int argc, char **argv)
                 //         std::cout << "debug block id " << blockids[k] << std::endl;
                 //     }
                 // }
-                // TODO parse the line and extract the server id
-                // if serverID is in line
-                // what about the duplication case?
                 for (int k = 0; k < blockids.size(); k++)
                 {
                     if (blockids[k] == globalRank)
                     {
                         // find element
-                        //std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
+                        // std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
                         serverIDList.push_back(serverIDTemp);
                         break;
                     }
@@ -350,16 +342,48 @@ int main(int argc, char **argv)
             }
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        if (globalRank == 0)
+        {
+            double processLog = timer.GetElapsedTime();
+            std::cout << "Time processing log ok is: " << processLog << std::endl;
+        }
 
-        // go through all servers
+        // make sure all response for runfilter is ok, this is last steps thing for exeecuting the run filter command
+        if (globalRank == 0)
+        {
+            for (int i = 0; i < reqlist.size(); i++)
+            {
+                // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+                int status = reqlist[i].wait();
+                if (status != 0)
+                {
+                    std::cout << "failed to call runfilter for some request " << i << std::endl;
+                }
+            }
+        }
+
+        // All processes need to wait for the completion of last step's run
+        // we can start to send the data to server
+        // after this point, the vis opertaion is ok
+        // and the data buffer at server end can be reused.
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (globalRank == 0)
+        {
+            if (c > 0)
+            {
+                double runfilterok = timer.GetElapsedTime();
+                std::cout << "Time runfilter ok is: " << runfilterok << std::endl;
+            }
+        }
+
+        // start to send data to corresponding servers
         // only give to first one
-        // for (int s = 0; s < 1; s++)
-        //std::cout << "rank " << globalRank << " server list size " << serverIDList.size() << std::endl;
+        std::vector<tl::async_response> stgReqlist;
+        // we may send data to multiple servers
         for (int s = 0; s < serverIDList.size(); s++)
         {
-            
-            std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
+
+            //std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
             tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
 
@@ -369,47 +393,26 @@ int main(int argc, char **argv)
             stgsegments[0].second = sizeofstgArray;
 
             tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
+            // using list here, it might send to multiple servers
             auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
-            int status = stgResponse.wait();
-            if (status != 0)
-            {
-                std::cout << "failed to stage the data for rank " << globalRank << std::endl;
-            }
+            //wait until the server pull the data from client
+            //we can then do the next step
+            //so we can not use the async now, we need to wait until pull completes
+            stgResponse.wait();
         }
 
-        // when sending ok for all ranks
 
-        // TODO call run filter for testing
-        // maybe we should call the master, and master will call run for all associated ranks
+        // Data staging is ok for this point
+        // we start to call each server to start to run the filter
         MPI_Barrier(MPI_COMM_WORLD);
         if (globalRank == 0)
         {
-            // // for controller rank
-            // // send run api for all staging service
-            // for (auto addr : globalAddrList)
-            // {
-            //     std::cout << "sent stagetest api to " << addr << std::endl;
-            //     tl::endpoint addrEndPoint = myEngine.lookup(addr);
-            //     tl::provider_handle phVisServer(addrEndPoint, provider_id);
-            //     // use async call
-            //     auto response = stagetest.on(phVisServer).async();
-            //     reqlist.push_back(std::move(response));
-            // }
+            double stageOk = timer.GetElapsedTime();
+            std::cout << "Time stage ok is: " << stageOk << std::endl;
+        }
 
-            // // make sure all response is ok
-            // for (int i = 0; i < reqlist.size(); i++)
-            // {
-            //     int status = reqlist[i].wait();
-            //     if (status != 0)
-            //     {
-            //         std::cout << "failed to stagetest the data for some request " << i << std::endl;
-            //     }
-            //     // TODO, hangs at the reqlist here
-            // }
-            // std::cout << "Controller ok to call the stagetest" << std::endl;
-
-            // clean the reqlist
-            // call the runfilter on remote server
+        if (globalRank == 0)
+        {
             reqlist.clear();
             for (auto addr : globalAddrList)
             {
@@ -424,13 +427,8 @@ int main(int argc, char **argv)
         }
     }
 
+    // when all steps complete
     std::cout << "client " << globalRank << " close" << std::endl;
-    // TODO, notify serer to close the connection
-    timer.Stop();
-    if (globalRank == 0)
-    {
-        std::cout << "whole workflow exec time " << timer.GetElapsedTime() << " seconds" << std::endl;
-    }
 
     // finalize all servers
     if (globalRank == 0)
@@ -442,6 +440,12 @@ int main(int argc, char **argv)
             tl::provider_handle phVisServer(addrEndPoint, provider_id);
             finalize.on(phVisServer)();
         }
+    }
+
+    timer.Stop();
+    if (globalRank == 0)
+    {
+        std::cout << "Time when workflow exit is " << timer.GetElapsedTime() << " seconds" << std::endl;
     }
 
     MPI_Finalize();

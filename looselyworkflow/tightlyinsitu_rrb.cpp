@@ -183,6 +183,12 @@ int main(int argc, char **argv)
         }
     }
 
+    if (globalRank == 0)
+    {
+        double initTime = timer.GetElapsedTime();
+        std::cout << "Time init ok is: " << initTime << std::endl;
+    }
+
     std::vector<tl::async_response> reqlist;
     for (int c = 0; c < numCycles; c++)
     {
@@ -211,20 +217,11 @@ int main(int argc, char **argv)
 
         if (globalRank == 0)
         {
-            std::cout << "ok for sim, send stage api" << std::endl;
+            double loadAndSimOk = timer.GetElapsedTime();
+            std::cout << "Time load and sim ok for cycle " << c  << " is: " << loadAndSimOk << std::endl;
         }
-        // make sure all response is ok
-        for (int i = 0; i < reqlist.size(); i++)
-        {
-            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
-            int status = reqlist[i].wait();
-            if (status != 0)
-            {
-                std::cout << "failed to call runfilter for some request " << i << std::endl;
-            }
-        }
-        // after this point, the vis opertaion is ok
-        // and the data buffer at server end can be reused.
+        
+
 
         // marshal the vtk data (data transfer)
         vtkSmartPointer<vtkCharArray> buffer = vtkSmartPointer<vtkCharArray>::New();
@@ -244,6 +241,29 @@ int main(int argc, char **argv)
 
         // send the marshaled object to remote server
         // using bulk transfer
+
+
+        // make sure all response is ok
+        for (int i = 0; i < reqlist.size(); i++)
+        {
+            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+            int status = reqlist[i].wait();
+            if (status != 0)
+            {
+                std::cout << "failed to call runfilter for some request " << i << std::endl;
+            }
+        }
+        // after this point, the vis opertaion is ok
+        // we can start to stage data
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (globalRank == 0)
+        {
+            if (c > 0)
+            {
+                double runfilterok = timer.GetElapsedTime();
+                std::cout << "Time runfilter ok is: " << runfilterok << std::endl;
+            }
+        }
 
         tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverID]);
         tl::provider_handle stage_ph(serverEndpoint, provider_id);
@@ -269,32 +289,12 @@ int main(int argc, char **argv)
         MPI_Barrier(MPI_COMM_WORLD);
         if (globalRank == 0)
         {
-            // // for controller rank
-            // // send run api for all staging service
-            // for (auto addr : globalAddrList)
-            // {
-            //     std::cout << "sent stagetest api to " << addr << std::endl;
-            //     tl::endpoint addrEndPoint = myEngine.lookup(addr);
-            //     tl::provider_handle phVisServer(addrEndPoint, provider_id);
-            //     // use async call
-            //     auto response = stagetest.on(phVisServer).async();
-            //     reqlist.push_back(std::move(response));
-            // }
+            double stageOk = timer.GetElapsedTime();
+            std::cout << "Time stage ok is: " << stageOk << std::endl;
+        }
 
-            // // make sure all response is ok
-            // for (int i = 0; i < reqlist.size(); i++)
-            // {
-            //     int status = reqlist[i].wait();
-            //     if (status != 0)
-            //     {
-            //         std::cout << "failed to stagetest the data for some request " << i << std::endl;
-            //     }
-            //     // TODO, hangs at the reqlist here
-            // }
-            // std::cout << "Controller ok to call the stagetest" << std::endl;
-
-            // clean the reqlist
-            // call the runfilter on remote server
+        if (globalRank == 0)
+        {
             reqlist.clear();
             for (auto addr : globalAddrList)
             {
@@ -309,13 +309,6 @@ int main(int argc, char **argv)
         }
     }
 
-    std::cout << "client " << globalRank << " close" << std::endl;
-    // TODO, notify serer to close the connection
-    timer.Stop();
-    if (globalRank == 0)
-    {
-        std::cout << "whole workflow exec time " << timer.GetElapsedTime() << " seconds" << std::endl;
-    }
 
     // finalize all servers
     if (globalRank == 0)
@@ -327,6 +320,13 @@ int main(int argc, char **argv)
             tl::provider_handle phVisServer(addrEndPoint, provider_id);
             finalize.on(phVisServer)();
         }
+    }
+
+    std::cout << "client " << globalRank << " close" << std::endl;
+    timer.Stop();
+    if (globalRank == 0)
+    {
+        std::cout << "Time when workflow exit is " << timer.GetElapsedTime() << " seconds" << std::endl;
     }
 
     MPI_Finalize();
