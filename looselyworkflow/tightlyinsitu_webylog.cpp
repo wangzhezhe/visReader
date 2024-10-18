@@ -122,6 +122,100 @@ bool dirExists(const std::string &path)
     return false; // Path exists but is not a directory
 }
 
+std::vector<int> GetServerIdListByLog(int c, int numServers, std::string assignFileName)
+{
+    std::vector<int> serverIDList;
+    if (c == 0)
+    {
+        // using rrb
+        // there is only one server id for each block
+        serverIDList.push_back(globalRank % numServers);
+    }
+    else
+    {
+        assignFileName = "assign_options.config";
+        // create assignment plan based on python call (todo, move to cpp in future)
+        if (globalRank == 0)
+        {
+            // check existing of tracing log
+            std::string traceDirName = "tracelog_cycle" + std::to_string(c - 1);
+            if (dirExists(traceDirName) == false)
+            {
+                throw std::runtime_error("Failed to find trace log dir:" + traceDirName);
+            }
+
+            // create assignment plan
+            // parse the file
+            // two loosely server, 8 ranks, three stages
+            int totalBlocks = totalRanks;
+            std::string command1 = "python3 parser_block_workloads.py ./tracelog_cycle" + std::to_string(c - 1) + "/ " + std::to_string(numServers) + " " + std::to_string(totalBlocks) + " 3";
+            std::cout << "execute command1: " << command1 << std::endl;
+            int result = system(command1.c_str()); // Replace "ls -l" with your command
+            if (result != 0)
+            {
+                throw std::runtime_error("Failed to execute command1");
+            }
+            std::string command2 = "python3 generate_assignment_actual_bpacking_dup_capacity_vector.py " + std::to_string(totalBlocks) + " " + std::to_string(numServers) + " ./adv_step_stages_list.json";
+            std::cout << "execute command2: " << command2 << std::endl;
+            result = system(command2.c_str()); // Replace "ls -l" with your command
+            if (result != 0)
+            {
+                throw std::runtime_error("Failed to execute command2");
+            }
+        }
+
+        // load results from assignFileName to know
+        // which client need to send data to which server
+        std::string line;
+        std::ifstream infile(assignFileName.c_str());
+        int serverIDTemp = 0;
+        // assuming rankid is block id
+        std::string global_rank_str = std::to_string(globalRank);
+        while (std::getline(infile, line))
+        {
+            if (globalRank == 0)
+            {
+                std::cout << "get line " << line << std::endl;
+            }
+
+            // split the line based on space
+            // put results into a vector
+            std::vector<int> blockids;
+            int leftIdx = 0;
+            int rightIdx = 0;
+            while (rightIdx < line.size())
+            {
+                while (rightIdx < line.size() && line[rightIdx] != ' ')
+                    rightIdx++;
+                blockids.push_back(std::stoi(line.substr(leftIdx, rightIdx - leftIdx)));
+                leftIdx = rightIdx + 1;
+                rightIdx = rightIdx + 1;
+            }
+
+            // for (int k = 0; k < blockids.size(); k++)
+            // {
+            //     if (globalRank == 0)
+            //     {
+            //         std::cout << "debug block id " << blockids[k] << std::endl;
+            //     }
+            // }
+            for (int k = 0; k < blockids.size(); k++)
+            {
+                if (blockids[k] == globalRank)
+                {
+                    // find element
+                    // std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
+                    serverIDList.push_back(serverIDTemp);
+                    break;
+                }
+            }
+            // move to the next line
+            serverIDTemp++;
+        }
+    }
+    return serverIDList;
+}
+
 // The tightly part should be like a client and send data into the server(loosely part)
 int main(int argc, char **argv)
 {
@@ -243,7 +337,7 @@ int main(int argc, char **argv)
         if (globalRank == 0)
         {
             double loadAndSimOk = timer.GetElapsedTime();
-            std::cout << "Time load and sim ok for cycle " << c  << " is: " << loadAndSimOk << std::endl;
+            std::cout << "Time load and sim ok for cycle " << c << " is: " << loadAndSimOk << std::endl;
         }
 
         // we can do some data processing opeartions when waiting the server
@@ -252,95 +346,7 @@ int main(int argc, char **argv)
         int numServers = globalAddrList.size();
         // This is using the previous log to find server id
         // use new server id when this part is ready
-        std::vector<int> serverIDList;
-        if (c == 0)
-        {
-            // using rrb
-            // there is only one server id for each block
-            serverIDList.push_back(globalRank % numServers);
-        }
-        else
-        {
-            assignFileName = "assign_options.config";
-            // create assignment plan based on python call (todo, move to cpp in future)
-            if (globalRank == 0)
-            {
-                // check existing of tracing log
-                std::string traceDirName = "tracelog_cycle" + std::to_string(c - 1);
-                if (dirExists(traceDirName) == false)
-                {
-                    throw std::runtime_error("Failed to find trace log dir:" + traceDirName);
-                }
-
-                // create assignment plan
-                // parse the file
-                // two loosely server, 8 ranks, three stages
-                int totalBlocks = totalRanks;
-                std::string command1 = "python3 parser_block_workloads.py ./tracelog_cycle" + std::to_string(c - 1) + "/ " + std::to_string(numServers) + " " + std::to_string(totalBlocks) + " 3";
-                std::cout << "execute command1: " << command1 << std::endl;
-                int result = system(command1.c_str()); // Replace "ls -l" with your command
-                if (result != 0)
-                {
-                    throw std::runtime_error("Failed to execute command1");
-                }
-                std::string command2 = "python3 generate_assignment_actual_bpacking_dup_capacity_vector.py " + std::to_string(totalBlocks) + " " + std::to_string(numServers) + " ./adv_step_stages_list.json";
-                std::cout << "execute command2: " << command2 << std::endl;
-                result = system(command2.c_str()); // Replace "ls -l" with your command
-                if (result != 0)
-                {
-                    throw std::runtime_error("Failed to execute command2");
-                }
-            }
-
-            // load results from assignFileName to know
-            // which client need to send data to which server
-            std::string line;
-            std::ifstream infile(assignFileName.c_str());
-            int serverIDTemp = 0;
-            // assuming rankid is block id
-            std::string global_rank_str = std::to_string(globalRank);
-            while (std::getline(infile, line))
-            {
-                if (globalRank == 0)
-                {
-                    std::cout << "get line " << line << std::endl;
-                }
-
-                // split the line based on space
-                // put results into a vector
-                std::vector<int> blockids;
-                int leftIdx = 0;
-                int rightIdx = 0;
-                while (rightIdx < line.size())
-                {
-                    while (rightIdx < line.size() && line[rightIdx] != ' ')
-                        rightIdx++;
-                    blockids.push_back(std::stoi(line.substr(leftIdx, rightIdx - leftIdx)));
-                    leftIdx = rightIdx + 1;
-                    rightIdx = rightIdx + 1;
-                }
-
-                // for (int k = 0; k < blockids.size(); k++)
-                // {
-                //     if (globalRank == 0)
-                //     {
-                //         std::cout << "debug block id " << blockids[k] << std::endl;
-                //     }
-                // }
-                for (int k = 0; k < blockids.size(); k++)
-                {
-                    if (blockids[k] == globalRank)
-                    {
-                        // find element
-                        // std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
-                        serverIDList.push_back(serverIDTemp);
-                        break;
-                    }
-                }
-                // move to the next line
-                serverIDTemp++;
-            }
-        }
+        std::vector<int> serverIDList = GetServerIdListByLog(c,numServers,assignFileName);
 
         if (globalRank == 0)
         {
@@ -383,7 +389,7 @@ int main(int argc, char **argv)
         for (int s = 0; s < serverIDList.size(); s++)
         {
 
-            //std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
+            // std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
             tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
 
@@ -395,12 +401,11 @@ int main(int argc, char **argv)
             tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
             // using list here, it might send to multiple servers
             auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
-            //wait until the server pull the data from client
-            //we can then do the next step
-            //so we can not use the async now, we need to wait until pull completes
+            // wait until the server pull the data from client
+            // we can then do the next step
+            // so we can not use the async now, we need to wait until pull completes
             stgResponse.wait();
         }
-
 
         // Data staging is ok for this point
         // we start to call each server to start to run the filter
@@ -433,6 +438,22 @@ int main(int argc, char **argv)
     // finalize all servers
     if (globalRank == 0)
     {
+
+        // for last round, we still need another workload estimation process
+        // TODO
+
+        for (int i = 0; i < reqlist.size(); i++)
+        {
+            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+            int status = reqlist[i].wait();
+            if (status != 0)
+            {
+                std::cout << "failed to call runfilter for some request " << i << std::endl;
+            }
+        }
+
+        double runfilterok = timer.GetElapsedTime();
+        std::cout << "Time runfilter ok is: " << runfilterok << std::endl;
         for (auto addr : globalAddrList)
         {
             std::cout << "sent finalize api to " << addr << std::endl;

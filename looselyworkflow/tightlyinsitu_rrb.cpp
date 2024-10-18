@@ -218,10 +218,8 @@ int main(int argc, char **argv)
         if (globalRank == 0)
         {
             double loadAndSimOk = timer.GetElapsedTime();
-            std::cout << "Time load and sim ok for cycle " << c  << " is: " << loadAndSimOk << std::endl;
+            std::cout << "Time load and sim ok for cycle " << c << " is: " << loadAndSimOk << std::endl;
         }
-        
-
 
         // marshal the vtk data (data transfer)
         vtkSmartPointer<vtkCharArray> buffer = vtkSmartPointer<vtkCharArray>::New();
@@ -242,15 +240,17 @@ int main(int argc, char **argv)
         // send the marshaled object to remote server
         // using bulk transfer
 
-
         // make sure all response is ok
-        for (int i = 0; i < reqlist.size(); i++)
+        if (globalRank == 0)
         {
-            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
-            int status = reqlist[i].wait();
-            if (status != 0)
+            for (int i = 0; i < reqlist.size(); i++)
             {
-                std::cout << "failed to call runfilter for some request " << i << std::endl;
+                // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+                int status = reqlist[i].wait();
+                if (status != 0)
+                {
+                    std::cout << "failed to call runfilter for some request " << i << std::endl;
+                }
             }
         }
         // after this point, the vis opertaion is ok
@@ -274,7 +274,7 @@ int main(int argc, char **argv)
         stgsegments[0].second = sizeofstgArray;
 
         tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
-        //the last parameter is block id
+        // the last parameter is block id
         auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
         int status = stgResponse.wait();
         if (status != 0)
@@ -309,10 +309,23 @@ int main(int argc, char **argv)
         }
     }
 
-
-    // finalize all servers
+    // make sure last step run filter is ok
+    // then sending termination api to server
     if (globalRank == 0)
     {
+        for (int i = 0; i < reqlist.size(); i++)
+        {
+            // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
+            int status = reqlist[i].wait();
+            if (status != 0)
+            {
+                std::cout << "failed to call runfilter for some request " << i << std::endl;
+            }
+        }
+        
+        double runfilterok = timer.GetElapsedTime();
+        std::cout << "Time runfilter ok is: " << runfilterok << std::endl;
+
         for (auto addr : globalAddrList)
         {
             std::cout << "sent finalize api to " << addr << std::endl;
