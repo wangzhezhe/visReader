@@ -66,3 +66,12 @@ target_link_libraries(looselyinsitu thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} 
 
 add_executable(tightlyinsitu_webylog tightlyinsitu_webylog.cpp ${lcwf_SOURCE_DIR}/../LoadData.cpp ${lcwf_SOURCE_DIR}/../filter.cpp)
 target_link_libraries(tightlyinsitu_webylog thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)
+
+add_executable(tightlyinsitu_webyest tightlyinsitu_webyest.cpp
+${lcwf_SOURCE_DIR}/../LoadData.cpp 
+${lcwf_SOURCE_DIR}/../filter.cpp 
+${lcwf_SOURCE_DIR}/../workloadEstimation/Block.cxx 
+${lcwf_SOURCE_DIR}/../workloadEstimation/Block.h
+${lcwf_SOURCE_DIR}/../workloadEstimation/SLTool.cxx 
+${lcwf_SOURCE_DIR}/../workloadEstimation/SLTool.h)
+target_link_libraries(tightlyinsitu_webyest thallium ${VTKm_LIBRARIES} ${VTK_LIBRARIES} MPI::MPI_CXX)

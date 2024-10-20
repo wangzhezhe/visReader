@@ -44,6 +44,11 @@ long int NUMVALS = -1;
 
 const int PRINT_RANK = -1;
 
+static vtkm::FloatDefault random_1()
+{
+  return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
+}
+
 template <typename T>
 std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
 {
@@ -79,11 +84,6 @@ std::ostream &operator<<(std::ostream &out, const std::set<T> &s)
   out << ")";
 
   return out;
-}
-
-static vtkm::FloatDefault random_1()
-{
-  return (vtkm::FloatDefault)rand() / (vtkm::FloatDefault)RAND_MAX;
 }
 
 /*

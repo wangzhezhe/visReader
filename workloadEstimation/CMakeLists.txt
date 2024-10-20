@@ -17,6 +17,9 @@ add_executable(StreamlineMPI StreamlineMPI.cxx Block.cxx Block.h ../LoadData.cpp
 target_compile_definitions(StreamlineMPI PRIVATE "MPI_ENABLED")
 target_link_libraries(StreamlineMPI  ${VTKm_LIBRARIES} MPI::MPI_CXX)
 
-add_executable(StreamlineMPI2 StreamlineMPI2.cxx Block.cxx Block.h ../LoadData.cpp ../filter.cpp)
+add_executable(StreamlineMPI2 StreamlineMPI2.cxx 
+Block.cxx Block.h 
+SLTool.cxx SLTool.h
+../LoadData.cpp ../filter.cpp)
 target_compile_definitions(StreamlineMPI2 PRIVATE "MPI_ENABLED")
 target_link_libraries(StreamlineMPI2  ${VTKm_LIBRARIES} MPI::MPI_CXX )

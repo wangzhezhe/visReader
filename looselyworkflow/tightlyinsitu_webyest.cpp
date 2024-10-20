@@ -15,6 +15,10 @@
 #include "../AssignStrategy.hpp"
 #include "../LoadData.hpp"
 #include "../filter.hpp"
+#include "../workloadEstimation/Block.h"
+#include "../workloadEstimation/SLTool.h"
+
+#include <vtkm/cont/DataSetBuilderUniform.h>
 #include <vtkm/filter/flow/Tracer.h>
 
 #include <vtkDataSetReader.h>
@@ -122,107 +126,228 @@ bool dirExists(const std::string &path)
     return false; // Path exists but is not a directory
 }
 
-std::vector<int> GetServerIdListByLog(int c, int numServers, std::string assignFileName)
+vtkm::cont::DataSet ConvertToVtkmDS(vtkStructuredPoints *outDataSet, std::string filedName)
+{
+    int dimensions[3];
+    outDataSet->GetDimensions(dimensions);
+    double spacijk[3];
+    outDataSet->GetSpacing(spacijk);
+    double origin[3];
+    outDataSet->GetOrigin(origin);
+
+    int arrayNum = outDataSet->GetPointData()->GetNumberOfArrays();
+    vtkDataArray *dataArray = outDataSet->GetPointData()->GetArray(filedName.c_str());
+
+    vtkIdType numTuples = dataArray->GetNumberOfTuples();
+
+    vtkm::cont::DataSetBuilderUniform dsb;
+    vtkm::Id3 vtkmDimensions(dimensions[0], dimensions[1], dimensions[2]);
+    vtkm::Vec<double, 3> vtkmSpacing(spacijk[0], spacijk[1], spacijk[2]);
+    vtkm::Vec<double, 3> vtkmOrigin(origin[0], origin[1], origin[2]);
+
+    vtkm::cont::DataSet ds = dsb.Create(vtkmDimensions, vtkmOrigin, vtkmSpacing);
+
+    // adding vector field into vtkm data set from vtkDoubleArray
+    vtkm::cont::ArrayHandle<vtkm::Vec3f> vecField;
+    vecField.Allocate(numTuples);
+    auto wPortal = vecField.WritePortal();
+
+    std::array<double, 3> tuple;
+    for (vtkIdType t = 0; t < numTuples; ++t)
+    {
+        dataArray->GetTuple(t, tuple.data());
+        wPortal.Set(vtkm::Id(t), vtkm::Vec<double, 3>(tuple[0], tuple[1], tuple[2]));
+    }
+    //it is still mesh_mesh/velocity here
+    ds.AddPointField(filedName.c_str(), vecField);
+    return ds;
+}
+
+std::vector<int> GetServerIdListByEst(int c, int numServers, std::string assignFileName, vtkSmartPointer<vtkDataSet> inData)
 {
     std::vector<int> serverIDList;
-    if (c == 0)
+    // For advection case, we do not need care about the first round
+    // there is no cold start issue
+
+    // converting vtk data sets to vtkm data sets for each rank
+    std::vector<vtkm::cont::DataSet> vtkmDataSets;
+    vtkStructuredPoints *outDataSet = vtkStructuredPoints::SafeDownCast(inData);
+
+    std::string fieldNm = "mesh_mesh/velocity";
+    vtkm::cont::DataSet vtkmInDS = ConvertToVtkmDS(outDataSet, fieldNm);
+    vtkmDataSets.push_back(vtkmInDS);
+
+    // make sure all data sets are ready before moving to the next step
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    vtkm::filter::flow::internal::BoundsMap boundsMap(vtkmDataSets);
+    std::vector<DomainBlock *> blockInfo;
+    /*
+    NUM_TEST_POINTS=50
+    NXYZ=2
+    WIDTH_PCT=0.1
+    */
+    // the advection filter call the tracer anyway
+    vtkm::filter::flow::GetTracer().Get()->Init(globalRank);
+    vtkm::filter::flow::GetTracer().Get()->StartTimer();
+    // reset cycle before running the filter
+    vtkm::filter::flow::GetTracer().Get()->ResetIterationStep(c);
+    
+    //Be carefule, the effects of the estimation is highly related to the initial parameters
+    //and associated data sets
+    vtkm::Id Nxyz = 4;
+    int NX = Nxyz, NY = Nxyz, NZ = Nxyz;
+    bool subdivUniform = false;
+    int totNumBlocks = totalRanks;
+    double pctWidth = 0.1;
+    double stepSize = 0.005;
+    int maxSteps = 2000;
+    int numFacePts = 20;
+    int numTestPts = 1000;
+
+    // if(globalRank==0){
+    //     std::cout << "---Debug CreateBlockInfo " << totNumBlocks << " " << subdivUniform << " "
+    //      << NX << " " << NY << " " << NZ << " " << pctWidth << std::endl;
+    // }
+    DomainBlock::CreateBlockInfo(blockInfo, totNumBlocks, boundsMap, subdivUniform, NX, NY, NZ, pctWidth);
+
+    std::vector<int> blockPopularity(totNumBlocks, 0), particlesIn(totNumBlocks, 0), particlesOut(totNumBlocks, 0), cycleCnt(totNumBlocks, 0);
+
+    std::vector<int> blockAdvMultiStages(totNumBlocks * 3, 0);
+
+    int blockID = boundsMap.GetLocalBlockId(0);
+    const auto &ds = vtkmDataSets[0];
+    auto block = blockInfo[blockID];
+
+
+    // std::cout << "debug CreateFlowMap rank " << globalRank << " Nxyz " << Nxyz << " blockID " << blockID
+    //           << " fieldNm " << fieldNm << " stepSize " << stepSize << " maxSteps " << maxSteps << " numFacePts " << numFacePts << std::endl;
+    auto flowMap = CreateFlowMap(Nxyz, blockInfo, ds, blockID, fieldNm, stepSize, maxSteps, numFacePts, boundsMap);
+
+    CalcBlockPopularityMultiStages(blockInfo, ds, blockID, flowMap, boundsMap, blockAdvMultiStages, particlesIn, particlesOut, cycleCnt, numTestPts, fieldNm, stepSize, maxSteps);
+
+    if (globalRank == 0)
     {
-        // using rrb
-        // there is only one server id for each block
-        serverIDList.push_back(globalRank % numServers);
-    }
-    else
-    {
-        assignFileName = "assign_options.config";
+        std::cout << std::endl;
+        int sum = std::accumulate(blockAdvMultiStages.begin(), blockAdvMultiStages.end(), 0);
+        std::vector<float> blockPopNorm;
+        for (const auto &v : blockAdvMultiStages)
+        {
+            // std::cout << "debug blockAdvMultiStages " << v << std::endl;
+            blockPopNorm.push_back((float)(v) / sum);
+        }
+
+        // output blockPopNorm into file
+        std::ofstream logfile;
+        logfile.open("adv_step_stages_list.json");
+        logfile << "[";
+        for (int i = 0; i < blockPopNorm.size() / 3; i++)
+        {
+            int startPos = i * 3;
+            if (i > 0)
+            {
+                logfile << ",";
+            }
+            logfile << "[" << blockPopNorm[startPos] << "," << blockPopNorm[startPos + 1] << "," << blockPopNorm[startPos + 2] << "]";
+        }
+        logfile << "]" << std::endl;
+        logfile.close();
+
+        // ok for write out the workload estimation results
         // create assignment plan based on python call (todo, move to cpp in future)
-        if (globalRank == 0)
+
+        // create assignment plan
+        // parse the file
+        // for tightly in situ case, #block equals to #ranks
+        int totalBlocks = totalRanks;
+
+        // parser the log of the execution results
+        // make sure the output name of log file is tightlyinsitu_webyest_est.log
+        // std::string command1 = "python3 parser_estimation_run.py tightlyinsitu_webyest_execution.log " + std::to_string(totalBlocks) + " 3 ./adv_step_stages_list.json";
+        // std::cout << "execute command1: " << command1 << std::endl;
+        // int result = system(command1.c_str());
+        // if (result != 0)
+        //{
+        //    throw std::runtime_error("Failed to execute command1 and generate assignment plan");
+        //}
+
+        std::string command2 = "python3 generate_assignment_actual_bpacking_dup_capacity_vector.py " + std::to_string(totalBlocks) + " " + std::to_string(numServers) + " ./adv_step_stages_list.json";
+        std::cout << "execute command2: " << command2 << std::endl;
+        int result = system(command2.c_str());
+        if (result != 0)
         {
-            // check existing of tracing log
-            std::string traceDirName = "tracelog_cycle" + std::to_string(c - 1);
-            if (dirExists(traceDirName) == false)
-            {
-                throw std::runtime_error("Failed to find trace log dir:" + traceDirName);
-            }
-
-            // create assignment plan
-            // parse the file
-            // two loosely server, 8 ranks, three stages
-            int totalBlocks = totalRanks;
-            std::string command1 = "python3 parser_block_workloads.py ./tracelog_cycle" + std::to_string(c - 1) + "/ " + std::to_string(numServers) + " " + std::to_string(totalBlocks) + " 3";
-            std::cout << "execute command1: " << command1 << std::endl;
-            int result = system(command1.c_str()); // Replace "ls -l" with your command
-            if (result != 0)
-            {
-                throw std::runtime_error("Failed to execute command1");
-            }
-            std::string command2 = "python3 generate_assignment_actual_bpacking_dup_capacity_vector.py " + std::to_string(totalBlocks) + " " + std::to_string(numServers) + " ./adv_step_stages_list.json";
-            std::cout << "execute command2: " << command2 << std::endl;
-            result = system(command2.c_str()); // Replace "ls -l" with your command
-            if (result != 0)
-            {
-                throw std::runtime_error("Failed to execute command2");
-            }
-        }
-
-        // load results from assignFileName to know
-        // which client need to send data to which server
-        std::string line;
-        std::ifstream infile(assignFileName.c_str());
-        int serverIDTemp = 0;
-        // assuming rankid is block id
-        std::string global_rank_str = std::to_string(globalRank);
-        while (std::getline(infile, line))
-        {
-            if (globalRank == 0)
-            {
-                std::cout << "get line " << line << std::endl;
-            }
-
-            // split the line based on space
-            // put results into a vector
-            std::vector<int> blockids;
-            int leftIdx = 0;
-            int rightIdx = 0;
-            while (rightIdx < line.size())
-            {
-                while (rightIdx < line.size() && line[rightIdx] != ' ')
-                    rightIdx++;
-                blockids.push_back(std::stoi(line.substr(leftIdx, rightIdx - leftIdx)));
-                leftIdx = rightIdx + 1;
-                rightIdx = rightIdx + 1;
-            }
-
-            // for (int k = 0; k < blockids.size(); k++)
-            // {
-            //     if (globalRank == 0)
-            //     {
-            //         std::cout << "debug block id " << blockids[k] << std::endl;
-            //     }
-            // }
-            for (int k = 0; k < blockids.size(); k++)
-            {
-                if (blockids[k] == globalRank)
-                {
-                    // find element
-                    // std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
-                    serverIDList.push_back(serverIDTemp);
-                    break;
-                }
-            }
-            // move to the next line
-            serverIDTemp++;
+            throw std::runtime_error("Failed to execute command2 and generate assignment plan");
         }
     }
+
+    // For each rank, pasrse the block assignment file
+    MPI_Barrier(MPI_COMM_WORLD);
+    // load results from assignFileName to know
+    // which client need to send data to which server
+    std::string line;
+    //make sure each rank knows the assignFileName
+    assignFileName = "assign_options.config";
+    std::ifstream infile(assignFileName.c_str());
+    int serverIDTemp = 0;
+    // assuming rankid is block id
+    std::string global_rank_str = std::to_string(globalRank);
+    while (std::getline(infile, line))
+    {
+        // if (globalRank == 0)
+        // {
+        //     std::cout << "get line " << line << std::endl;
+        // }
+
+        // split the line based on space
+        // put results into a vector
+        std::vector<int> blockids;
+        int leftIdx = 0;
+        int rightIdx = 0;
+        while (rightIdx < line.size())
+        {
+            while (rightIdx < line.size() && line[rightIdx] != ' ')
+                rightIdx++;
+            blockids.push_back(std::stoi(line.substr(leftIdx, rightIdx - leftIdx)));
+            leftIdx = rightIdx + 1;
+            rightIdx = rightIdx + 1;
+        }
+
+        // for (int k = 0; k < blockids.size(); k++)
+        // {
+        //     if (globalRank == 0)
+        //     {
+        //         std::cout << "debug block id " << blockids[k] << std::endl;
+        //     }
+        // }
+        for (int k = 0; k < blockids.size(); k++)
+        {
+            if (blockids[k] == globalRank)
+            {
+                // find element
+                // std::cout << "debug serverIDList, globalRank " << globalRank << " push server id " << serverIDTemp << std::endl;
+                serverIDList.push_back(serverIDTemp);
+                break;
+            }
+        }
+        // move to the next line
+        serverIDTemp++;
+    }
+
     return serverIDList;
 }
 
 // The tightly part should be like a client and send data into the server(loosely part)
 int main(int argc, char **argv)
 {
-
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &globalRank);
     MPI_Comm_size(MPI_COMM_WORLD, &totalRanks);
+
+    // declared in SLTool.h
+    SLTOOL_Rank = globalRank;
+    PRINT_RANK = -1;
+    PRINT_DETAILS = -1;
+    SLTOOL_TOTALPROCS = totalRanks;
 
     // set necessary vtkm arguments and timer information
     vtkm::cont::InitializeResult initResult = vtkm::cont::Initialize(
@@ -318,7 +443,7 @@ int main(int argc, char **argv)
         // marshal the vtk data (data transfer)
         vtkSmartPointer<vtkCharArray> buffer = vtkSmartPointer<vtkCharArray>::New();
         bool oktoMarshal = vtkCommunicator::MarshalDataObject(inData.GetPointer(), buffer);
-        // buffer->Print(std::cout);
+        //buffer->Print(std::cout);
         if (oktoMarshal == false)
         {
             throw std::runtime_error("failed to marshal vtk data");
@@ -346,17 +471,15 @@ int main(int argc, char **argv)
         int numServers = globalAddrList.size();
         // This is using the previous log to find server id
         // use new server id when this part is ready
-        std::vector<int> serverIDList = GetServerIdListByLog(c,numServers,assignFileName);
-
+        std::vector<int> serverIDList = GetServerIdListByEst(c, numServers, assignFileName, inData);
+        MPI_Barrier(MPI_COMM_WORLD);
         if (globalRank == 0)
         {
             double processLog = timer.GetElapsedTime();
             std::cout << "Time processing log ok is: " << processLog << std::endl;
-        }
 
-        // make sure all response for runfilter is ok, this is last steps thing for exeecuting the run filter command
-        if (globalRank == 0)
-        {
+            // make sure all response for runfilter is ok, this is last steps thing for exeecuting the run filter command
+
             for (int i = 0; i < reqlist.size(); i++)
             {
                 // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;
@@ -388,8 +511,7 @@ int main(int argc, char **argv)
         // we may send data to multiple servers
         for (int s = 0; s < serverIDList.size(); s++)
         {
-
-            // std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
+            //std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
             tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
 
@@ -438,6 +560,10 @@ int main(int argc, char **argv)
     // finalize all servers
     if (globalRank == 0)
     {
+
+        // for last round, we still need another workload estimation process
+        // TODO
+
         for (int i = 0; i < reqlist.size(); i++)
         {
             // std::cout << "global rank " << globalRank << " req list " << reqlist.size() << std::endl;

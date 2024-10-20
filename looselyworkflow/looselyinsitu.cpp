@@ -193,7 +193,7 @@ private:
         // outDataSet->PrintSelf(std::cout, vtkIndent(5));
         // converting to vtkm data set
         vtkm::cont::DataSet vtkmInDs = ConvertToVtkmDS(outDataSet, "mesh_mesh/velocity");
-        // vtkmInDs.PrintSummary(std::cout);
+        //vtkmInDs.PrintSummary(std::cout);
 
         // using atomic operation to add the data into the vector
         vtkmDataSetsMutex.lock();
@@ -246,10 +246,10 @@ private:
         FILTER::LOCAL_BLOCKIDS = local_blockids;
         FILTER::GLOBAL_BLOCK_MANUALID = true;
 
-        for (int bid = 0; bid < local_blockids.size(); bid++)
-        {
-            std::cout << "rank " << globalRank << " local_blockid " << local_blockids[bid] << std::endl;
-        }
+        // for (int bid = 0; bid < local_blockids.size(); bid++)
+        // {
+        //     std::cout << "rank " << globalRank << " local_blockid " << local_blockids[bid] << std::endl;
+        // }
 
         FILTER::runAdvection(partitionedDataSet, globalRank, totalRanks, cycle, seedMethod, fieldToOperateOn, true, recordTrajectories, outputResults, outputSeeds, GlobalDeviceID);
         vtkm::filter::flow::GetTracer().Get()->TimeTraceToBuffer("FilterEnd");
