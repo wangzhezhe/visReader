@@ -402,7 +402,10 @@ int main(int argc, char **argv)
             // wait until the server pull the data from client
             // we can then do the next step
             // so we can not use the async now, we need to wait until pull completes
-            stgResponse.wait();
+            int status = stgResponse.wait();
+            if(status!=0){
+                throw std::runtime_error("failed to stage the data");
+            }
         }
 
         // Data staging is ok for this point
