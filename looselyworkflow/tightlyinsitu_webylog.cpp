@@ -141,7 +141,7 @@ std::vector<int> GetServerIdListByLog(int c, int numServers, std::string assignF
             std::string traceDirName = "tracelog_cycle" + std::to_string(c - 1);
             if (dirExists(traceDirName) == false)
             {
-                throw std::runtime_error("Failed to find trace log dir:" + traceDirName);
+                throw std::runtime_error("Failed to find trace log dir: " + traceDirName);
             }
 
             // create assignment plan
@@ -343,17 +343,6 @@ int main(int argc, char **argv)
         // we can do some data processing opeartions when waiting the server
         // such as processing the log etc.
         //  consider sending the vtk data to the remote server
-        int numServers = globalAddrList.size();
-        // This is using the previous log to find server id
-        // use new server id when this part is ready
-        std::vector<int> serverIDList = GetServerIdListByLog(c,numServers,assignFileName);
-
-        if (globalRank == 0)
-        {
-            double processLog = timer.GetElapsedTime();
-            std::cout << "Time processing log ok is: " << processLog << std::endl;
-        }
-
         // make sure all response for runfilter is ok, this is last steps thing for exeecuting the run filter command
         if (globalRank == 0)
         {
@@ -380,6 +369,15 @@ int main(int argc, char **argv)
                 double runfilterok = timer.GetElapsedTime();
                 std::cout << "Time runfilter ok is: " << runfilterok << std::endl;
             }
+        }
+
+        // when last step's filter execution ok, we can start parse the trace file
+        int numServers = globalAddrList.size();
+        std::vector<int> serverIDList = GetServerIdListByLog(c, numServers, assignFileName);
+        if (globalRank == 0)
+        {
+            double processLog = timer.GetElapsedTime();
+            std::cout << "Time processing log ok is: " << processLog << std::endl;
         }
 
         // start to send data to corresponding servers
