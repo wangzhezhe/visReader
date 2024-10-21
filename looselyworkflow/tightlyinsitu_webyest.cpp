@@ -35,6 +35,24 @@ namespace tl = thallium;
 int globalRank = 0;
 int totalRanks = 0;
 std::vector<std::string> globalAddrList;
+std::map<std::string, tl::endpoint> serverToEndpoints;
+
+tl::endpoint lookupEndPoint(std::string& address,tl::engine& myEngine)
+{
+
+  auto it = serverToEndpoints.find(address);
+  if (it == serverToEndpoints.end())
+  {
+    // do not lookup here to avoid the potential mercury race condition
+    // throw std::runtime_error("failed to find addr, cache the endpoint at the constructor\n");
+    auto endpoint = myEngine.lookup(address);
+    std::string tempAddr = address;
+    serverToEndpoints[tempAddr] = endpoint;
+    return endpoint;
+  }
+
+  return it->second;
+}
 
 vtkSmartPointer<vtkDataSet> LoadDataIntoVTK(const std::string &visitfileName)
 {
@@ -391,7 +409,9 @@ int main(int argc, char **argv)
     // loosely coupled in situ mode
     // load the master server addr
 
-    tl::endpoint masterep = myEngine.lookup(masterAddr);
+    // tl::endpoint masterep = myEngine.lookup(masterAddr);
+    tl::endpoint masterep = lookupEndPoint(masterAddr,myEngine);
+    
     // just fix it
     uint16_t provider_id = 22;
 
@@ -512,7 +532,8 @@ int main(int argc, char **argv)
         for (int s = 0; s < serverIDList.size(); s++)
         {
             //std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
-            tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
+            //tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
+            tl::endpoint serverEndpoint = lookupEndPoint(globalAddrList[serverIDList[s]],myEngine);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
 
             std::vector<std::pair<void *, std::size_t>> stgsegments(1);
@@ -547,7 +568,8 @@ int main(int argc, char **argv)
             for (auto addr : globalAddrList)
             {
                 std::cout << "sent run filter api to " << addr << std::endl;
-                tl::endpoint addrEndPoint = myEngine.lookup(addr);
+                //tl::endpoint addrEndPoint = myEngine.lookup(addr);
+                tl::endpoint addrEndPoint = lookupEndPoint(addr,myEngine);
                 tl::provider_handle phVisServer(addrEndPoint, provider_id);
                 // use async call
                 std::string field = "velocity";
@@ -582,7 +604,8 @@ int main(int argc, char **argv)
         for (auto addr : globalAddrList)
         {
             std::cout << "sent finalize api to " << addr << std::endl;
-            tl::endpoint addrEndPoint = myEngine.lookup(addr);
+            //tl::endpoint addrEndPoint = myEngine.lookup(addr);
+            tl::endpoint addrEndPoint = lookupEndPoint(addr,myEngine);
             tl::provider_handle phVisServer(addrEndPoint, provider_id);
             finalize.on(phVisServer)();
         }
