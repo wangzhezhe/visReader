@@ -444,7 +444,7 @@ int main(int argc, char **argv)
         spdlog::set_level(spdlog::level::debug);
     }
 
-    tl::engine myEngine(protocol, THALLIUM_SERVER_MODE);
+    tl::engine myEngine(protocol, THALLIUM_SERVER_MODE, false, 8);
     globalServerEnginePtr = &myEngine;
 
     std::string selfAddr = myEngine.self();
