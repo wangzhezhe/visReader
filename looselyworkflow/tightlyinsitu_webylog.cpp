@@ -404,12 +404,12 @@ int main(int argc, char **argv)
 
         // start to send data to corresponding servers
         // only give to first one
-        std::vector<tl::async_response> stgReqlist;
+        //std::vector<tl::async_response> stgReqlist;
         // we may send data to multiple servers
         for (int s = 0; s < serverIDList.size(); s++)
         {
 
-            // std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
+            //std::cout << "rank " << globalRank << "  send data to server with id " << serverIDList[s] << std::endl;
             //tl::endpoint serverEndpoint = myEngine.lookup(globalAddrList[serverIDList[s]]);
             tl::endpoint serverEndpoint = lookupEndPoint(globalAddrList[serverIDList[s]],myEngine);
             tl::provider_handle stage_ph(serverEndpoint, provider_id);
@@ -421,14 +421,14 @@ int main(int argc, char **argv)
 
             tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
             // using list here, it might send to multiple servers
-            auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
+            stage.on(stage_ph)(sizeofstgArray, stgBulk, globalRank);
             // wait until the server pull the data from client
             // we can then do the next step
             // so we can not use the async now, we need to wait until pull completes
-            int status = stgResponse.wait();
-            if(status!=0){
-                throw std::runtime_error("failed to stage the data");
-            }
+            // int status = stgResponse.wait();
+            //if(status!=0){
+            //    throw std::runtime_error("failed to stage the data");
+            //}
         }
 
         // Data staging is ok for this point

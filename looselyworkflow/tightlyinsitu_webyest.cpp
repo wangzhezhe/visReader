@@ -213,14 +213,14 @@ std::vector<int> GetServerIdListByEst(int c, int numServers, std::string assignF
     
     //Be carefule, the effects of the estimation is highly related to the initial parameters
     //and associated data sets
-    vtkm::Id Nxyz = 4;
+    vtkm::Id Nxyz = 1;
     int NX = Nxyz, NY = Nxyz, NZ = Nxyz;
     bool subdivUniform = false;
     int totNumBlocks = totalRanks;
     double pctWidth = 0.1;
     double stepSize = 0.005;
     int maxSteps = 2000;
-    int numFacePts = 20;
+    int numFacePts = 50;
     int numTestPts = 1000;
 
     // if(globalRank==0){
@@ -527,7 +527,7 @@ int main(int argc, char **argv)
 
         // start to send data to corresponding servers
         // only give to first one
-        std::vector<tl::async_response> stgReqlist;
+        // std::vector<tl::async_response> stgReqlist;
         // we may send data to multiple servers
         for (int s = 0; s < serverIDList.size(); s++)
         {
@@ -543,14 +543,14 @@ int main(int argc, char **argv)
 
             tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
             // using list here, it might send to multiple servers
-            auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
+            stage.on(stage_ph)(sizeofstgArray, stgBulk, globalRank);
             // wait until the server pull the data from client
             // we can then do the next step
             // so we can not use the async now, we need to wait until pull completes
-            int status = stgResponse.wait();
-            if(status!=0){
-                throw std::runtime_error("failed to stage the data");
-            }
+            //int status = stgResponse.wait();
+            //if(status!=0){
+            //    throw std::runtime_error("failed to stage the data");
+            //}
         }
 
         // Data staging is ok for this point

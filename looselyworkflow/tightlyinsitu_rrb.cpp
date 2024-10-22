@@ -275,12 +275,12 @@ int main(int argc, char **argv)
 
         tl::bulk stgBulk = myEngine.expose(stgsegments, tl::bulk_mode::read_only);
         // the last parameter is block id
-        auto stgResponse = stage.on(stage_ph).async(sizeofstgArray, stgBulk, globalRank);
-        int status = stgResponse.wait();
-        if (status != 0)
-        {
-            std::cout << "failed to stage the data for rank " << globalRank << std::endl;
-        }
+        stage.on(stage_ph)(sizeofstgArray, stgBulk, globalRank);
+        //int status = stgResponse.wait();
+       //if (status != 0)
+        //{
+        //    std::cout << "failed to stage the data for rank " << globalRank << std::endl;
+        //}
 
         // when sending ok for all ranks
 
